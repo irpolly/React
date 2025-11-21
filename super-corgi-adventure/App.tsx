@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { GameState, LevelData } from './types';
@@ -68,7 +69,7 @@ const App: React.FC = () => {
         {gameState === GameState.MENU && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-8 z-10">
                 <h1 className="font-pixel text-4xl md:text-5xl text-yellow-400 mb-2 text-center leading-tight">
-                    VOXEL CORGI<br/><span className="text-white text-2xl">ADVENTURE</span>
+                    SUPER CORGI<br/><span className="text-white text-2xl">ADVENTURE</span>
                 </h1>
                 <p className="text-neutral-400 mb-6 font-sans text-center max-w-md">
                     Use Arrow Keys to Move. Space to Jump. Z to Bite.<br/>Find the Doghouse!
