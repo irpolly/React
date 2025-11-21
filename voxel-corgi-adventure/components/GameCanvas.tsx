@@ -1,7 +1,6 @@
-
 import React, { useRef, useEffect, useCallback } from 'react';
-import { GameState, LevelData, Platform, Enemy, Collectible, Particle } from '../types';
-import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE } from '../constants';
+import { GameState, LevelData, Platform, Enemy, Collectible, Particle, SpriteFrame } from '../types';
+import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE } from '../constants';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -78,17 +77,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             height: TILE_SIZE // Platforms are always at least 1 tile high for collision
         }));
 
-        enemies.current = levelData.enemies.map((e, i) => ({
-            id: `e-${i}`,
-            x: e.x,
-            y: e.y - 42, // Offset Y by height (14*3) so they sit ON TOP of the platform
-            width: 48, // 16 * 3.0 scale
-            height: 42, // 14 * 3.0 scale
-            vx: 2,
-            type: e.type,
-            patrolStart: e.x - 100,
-            patrolEnd: e.x + 100
-        }));
+        // Prepare enemies with robust ground snapping
+        enemies.current = levelData.enemies.map((e, i) => {
+            const width = 48; // 16 * 3.0 scale
+            const height = 42; // 14 * 3.0 scale
+            const centerX = e.x + width / 2;
+            
+            // Find the platform directly below this enemy's center
+            // We look for a platform that horizontally contains the enemy and is relatively close below
+            const groundPlat = platforms.current
+                .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) // Allow some leeway for floating gen
+                .sort((a, b) => a.y - b.y)[0]; // Get the highest one (smallest y) that meets criteria
+            
+            // If we found a valid ground, snap to it. Otherwise, use the provided Y (adjusted for height)
+            const finalY = groundPlat ? groundPlat.y - height : e.y - height;
+
+            return {
+                id: `e-${i}`,
+                x: e.x,
+                y: finalY, 
+                width: width,
+                height: height,
+                vx: 2,
+                type: e.type,
+                patrolStart: e.x - 100,
+                patrolEnd: e.x + 100,
+                variant: Math.floor(Math.random() * 4) // Random color variant 0-3
+            };
+        });
 
         collectibles.current = levelData.collectibles.map((c, i) => ({
             id: `c-${i}`,
@@ -207,11 +223,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   // --- RENDER HELPERS (Voxel Style) ---
   const drawVoxelSprite = useCallback((
     ctx: CanvasRenderingContext2D,
-    sprite: typeof SPRITE_CORGI_IDLE,
+    sprite: SpriteFrame,
     x: number,
     y: number,
     scale: number,
-    facingRight: boolean
+    facingRight: boolean,
+    paletteOverride?: Record<number, string>
   ) => {
     ctx.save();
     const pixelSize = scale;
@@ -231,7 +248,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             
             const px = x + cI * pixelSize;
             const py = y + rI * pixelSize;
-            const color = PALETTE[colIndex];
+            
+            // Use override color if available, otherwise default palette
+            const color = paletteOverride?.[colIndex] || PALETTE[colIndex];
 
             // Main Face
             ctx.fillStyle = color;
@@ -648,7 +667,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               // Walking animation
               const isWalkingFrame = Math.floor(Date.now() / 150) % 2 === 0;
               const sprite = (Math.abs(e.vx) > 0 && isWalkingFrame) ? SPRITE_CAT_WALK : SPRITE_CAT;
-              drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0);
+              
+              // Use palette variant for color
+              const variantPalette = CAT_VARIANTS[e.variant];
+              
+              drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette);
             }
         });
 
