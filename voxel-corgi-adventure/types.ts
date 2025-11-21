@@ -1,8 +1,10 @@
+
 export enum GameState {
   MENU = 'MENU',
   PLAYING = 'PLAYING',
   GAME_OVER = 'GAME_OVER',
-  GENERATING = 'GENERATING'
+  GENERATING = 'GENERATING',
+  LEVEL_COMPLETE = 'LEVEL_COMPLETE'
 }
 
 export interface Platform {
@@ -23,6 +25,7 @@ export interface Enemy {
   type: 'cat' | 'bat';
   patrolStart: number;
   patrolEnd: number;
+  variant: number; // 0: Grey, 1: White, 2: Tuxedo, 3: Brown
 }
 
 export interface Collectible {
@@ -52,7 +55,10 @@ export interface LevelData {
   groundColor: string;
   platforms: Omit<Platform, 'height'>[]; // Height is standardized
   enemies: { x: number; y: number; type: 'cat' | 'bat' }[];
+  obstacles: { x: number; y: number; type: 'spike' }[];
   collectibles: { x: number; y: number }[];
+  tennisBalls: { x: number; y: number }[];
+  goal: { x: number; y: number };
 }
 
 export interface SpriteFrame {

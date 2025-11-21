@@ -1,8 +1,16 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import { DEFAULT_LEVEL } from '../constants';
 import { LevelData } from '../types';
 
-export const generateLevel = async (theme: string): Promise<LevelData> => {
+export interface GenerationParams {
+  theme: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  length: 'Short' | 'Medium' | 'Long';
+  enemyDensity: 'Low' | 'Medium' | 'High';
+}
+
+export const generateLevel = async (params: GenerationParams): Promise<LevelData> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     console.warn("No API Key found, returning default level.");
@@ -12,15 +20,37 @@ export const generateLevel = async (theme: string): Promise<LevelData> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
     
+    // Derive constraints from params
+    let worldWidth = 3000;
+    if (params.length === 'Medium') worldWidth = 6000;
+    if (params.length === 'Long') worldWidth = 12000;
+
+    const enemyPrompt = params.enemyDensity === 'High' ? "Lots of enemies and ground spikes." : 
+                       params.enemyDensity === 'Medium' ? "Moderate amount of enemies and spikes." : "Very few enemies or hazards.";
+    
+    const difficultyPrompt = params.difficulty === 'Hard' ? "Challenging jumps, smaller platforms, more gaps, more spikes." : 
+                            params.difficulty === 'Medium' ? "Balanced platforming." : "Large platforms, easy jumps, safe falls.";
+
+    const systemPrompt = `
+      Create a 2D platformer level layout.
+      Theme: "${params.theme}".
+      Total World Width: 0 to ${worldWidth} pixels.
+      Difficulty: ${params.difficulty} (${difficultyPrompt}).
+      Enemies: ${enemyPrompt}
+      
+      Important Rules:
+      1. Ground Generation: DO NOT create a single flat floor. Create "Uneven Ground" by placing wide platforms at varying heights (y=500 to y=580) to form the floor terrain. Ensure there is a safe path.
+      2. Player Start: The player starts at x=100, y=400. Ensure there is ground below them.
+      3. Goal: Place a 'goal' near x=${worldWidth - 200}. It MUST be on a ground platform (approx y=550).
+      4. Platforms: Max jump height is ~150px.
+      5. Tennis Ball: Place exactly ONE 'tennisBall' (extra life) in a hard-to-reach spot (high platform or hidden area).
+      6. Obstacles: Place spikes on the ground/platforms.
+      7. Return valid JSON.
+    `;
+
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
-      contents: `Create a 2D platformer level layout with the theme: "${theme}". 
-      The level should have coordinate-based platforms, enemies, and collectibles.
-      The world coordinates typically range from x: 0 to 2000, and y: 0 to 600 (where 600 is bottom).
-      Ground level is roughly y=500.
-      Platforms should be reachable by jumping.
-      
-      Return valid JSON matching the schema.`,
+      contents: systemPrompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -54,6 +84,18 @@ export const generateLevel = async (theme: string): Promise<LevelData> => {
                 required: ["x", "y", "type"]
               }
             },
+            obstacles: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                    x: { type: Type.NUMBER },
+                    y: { type: Type.NUMBER },
+                    type: { type: Type.STRING, enum: ["spike"] }
+                },
+                required: ["x", "y", "type"]
+              }
+            },
             collectibles: {
               type: Type.ARRAY,
               items: {
@@ -64,9 +106,28 @@ export const generateLevel = async (theme: string): Promise<LevelData> => {
                 },
                 required: ["x", "y"]
               }
+            },
+            tennisBalls: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  x: { type: Type.NUMBER },
+                  y: { type: Type.NUMBER }
+                },
+                required: ["x", "y"]
+              }
+            },
+            goal: {
+                type: Type.OBJECT,
+                properties: {
+                    x: { type: Type.NUMBER },
+                    y: { type: Type.NUMBER }
+                },
+                required: ["x", "y"]
             }
           },
-          required: ["themeName", "backgroundColor", "groundColor", "platforms", "enemies", "collectibles"]
+          required: ["themeName", "backgroundColor", "groundColor", "platforms", "enemies", "obstacles", "collectibles", "tennisBalls", "goal"]
         }
       }
     });
