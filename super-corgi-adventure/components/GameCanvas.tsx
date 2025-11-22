@@ -12,6 +12,17 @@ interface GameCanvasProps {
   setLives: React.Dispatch<React.SetStateAction<number>>;
 }
 
+const hexToRgba = (hex: string, alpha: number) => {
+    // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    hex = hex.replace(shorthandRegex, (m, r, g, b) => {
+        return r + r + g + g + b + b;
+    });
+
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? `rgba(${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}, ${alpha})` : hex;
+};
+
 export const GameCanvas: React.FC<GameCanvasProps> = ({
   gameState,
   setGameState,
@@ -45,22 +56,26 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const platforms = useRef<Platform[]>([]);
   const enemies = useRef<Enemy[]>([]);
   const collectibles = useRef<Collectible[]>([]);
-  const tennisBalls = useRef<Collectible[]>([]); // Reusing Collectible interface
+  const tennisBalls = useRef<Collectible[]>([]); 
   const obstacles = useRef<{x: number, y: number, width: number, height: number}[]>([]);
   const particles = useRef<Particle[]>([]);
   const animationFrameId = useRef<number>(0);
   const goalRef = useRef({ x: 0, y: 0, width: 48, height: 48 });
+  
+  // Visual Depth Refs
+  const bgLayers = useRef<{x: number, y: number, width: number, height: number, color: string, parallax: number}[]>([]);
+  const fgLayers = useRef<{x: number, y: number, width: number, height: number, color: string, parallax: number}[]>([]);
 
   // Initialize Level
   useEffect(() => {
     if (gameState === GameState.PLAYING || gameState === GameState.MENU) {
-        // Reset Player (but don't fully reset physics if checking lives, handled in respawn logic)
+        // Reset Player
         player.current = {
             x: 100,
             y: 400,
             vx: 0,
             vy: 0,
-            width: 55, // Updated width
+            width: 55,
             height: 35, 
             grounded: false,
             facingRight: true,
@@ -74,22 +89,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Map Level Data to Game Objects
         platforms.current = levelData.platforms.map(p => ({ 
             ...p, 
-            height: TILE_SIZE // Platforms are always at least 1 tile high for collision
+            height: TILE_SIZE 
         }));
 
         // Prepare enemies with robust ground snapping
         enemies.current = levelData.enemies.map((e, i) => {
-            const width = 48; // 16 * 3.0 scale
-            const height = 42; // 14 * 3.0 scale
+            const width = 48; 
+            const height = 42; 
             const centerX = e.x + width / 2;
             
-            // Find the platform directly below this enemy's center
-            // We look for a platform that horizontally contains the enemy and is relatively close below
             const groundPlat = platforms.current
-                .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) // Allow some leeway for floating gen
-                .sort((a, b) => a.y - b.y)[0]; // Get the highest one (smallest y) that meets criteria
+                .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) 
+                .sort((a, b) => a.y - b.y)[0]; 
             
-            // If we found a valid ground, snap to it. Otherwise, use the provided Y (adjusted for height)
             const finalY = groundPlat ? groundPlat.y - height : e.y - height;
 
             return {
@@ -102,7 +114,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 type: e.type,
                 patrolStart: e.x - 100,
                 patrolEnd: e.x + 100,
-                variant: Math.floor(Math.random() * 4) // Random color variant 0-3
+                variant: Math.floor(Math.random() * 4)
             };
         });
 
@@ -124,56 +136,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 width: 24,
                 height: 24,
                 collected: false,
-                type: 'star' // Placeholder type, visuals handled by renderer
+                type: 'star'
             }));
         } else {
             tennisBalls.current = [];
         }
 
-        // Load provided obstacles (usually ground spikes)
         const providedObstacles = (levelData.obstacles || []).map(o => ({
             x: o.x,
-            y: o.y - 48, // Sit on top of surface (16*3 = 48). Input o.y is the surface Y.
+            y: o.y - 48, 
             width: 48,
             height: 48
         }));
 
-        // Procedurally add spikes to empty platforms
         const autoSpikes: {x: number, y: number, width: number, height: number}[] = [];
         levelData.platforms.forEach(plat => {
             const platCenter = plat.x + plat.width / 2;
-
-            // 1. Check if near Start
             if (Math.abs(platCenter - 100) < 200) return; 
-
-            // 2. Check if Goal is on this platform
             if (levelData.goal && 
                 levelData.goal.x > plat.x - 50 && levelData.goal.x < plat.x + plat.width + 50 &&
                 Math.abs(levelData.goal.y - plat.y) < 50) return;
 
-            // 3. Check Enemies
             const hasEnemy = levelData.enemies.some(e => 
                 e.x > plat.x - 40 && e.x < plat.x + plat.width + 40 && Math.abs(e.y - plat.y) < 80
             );
             if (hasEnemy) return;
 
-            // 4. Check Collectibles
             const hasCollectible = levelData.collectibles.some(c =>
                 c.x > plat.x - 20 && c.x < plat.x + plat.width + 20 && Math.abs(c.y - plat.y) < 50
             );
             if (hasCollectible) return;
 
-            // 5. Check Existing Obstacles
             const hasObstacle = (levelData.obstacles || []).some(o =>
                 o.x > plat.x - 20 && o.x < plat.x + plat.width + 20 && Math.abs(o.y - plat.y) < 50
             );
             if (hasObstacle) return;
             
-            // Platform is empty, add spike if it's wide enough (Reduced probability)
             if (plat.width >= 60 && Math.random() < 0.25) {
                 autoSpikes.push({
-                    x: platCenter - 24, // Center the 48px spike
-                    y: plat.y - 48,     // Sit on top of platform
+                    x: platCenter - 24, 
+                    y: plat.y - 48,     
                     width: 48,
                     height: 48
                 });
@@ -187,15 +189,57 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             const goalWidth = SPRITE_DOGHOUSE.width * 3.0;
             goalRef.current = {
                 x: levelData.goal.x,
-                y: levelData.goal.y - goalHeight, // Adjust to sit on ground
+                y: levelData.goal.y - goalHeight,
                 width: goalWidth, 
                 height: goalHeight
             };
         } else {
-            // Fallback goal if not provided
              goalRef.current = { x: 0, y: 0, width: 0, height: 0 };
         }
         
+        // Generate Background Layers
+        const bgObjs = [];
+        const fgObjs = [];
+        const worldEnd = levelData.goal ? levelData.goal.x + 1000 : 5000;
+        
+        // Far Background (Parallax 0.2) - Lighter, faded mountains
+        for (let i = -200; i < worldEnd; i += Math.random() * 300 + 200) {
+            bgObjs.push({
+                x: i,
+                y: WORLD_HEIGHT - (Math.random() * 300 + 100),
+                width: Math.random() * 400 + 200,
+                height: 600,
+                color: hexToRgba(levelData.groundColor, 0.3), // Faded
+                parallax: 0.2
+            });
+        }
+
+        // Mid Background (Parallax 0.5) - Slightly darker hills
+        for (let i = -100; i < worldEnd; i += Math.random() * 200 + 150) {
+            bgObjs.push({
+                x: i,
+                y: WORLD_HEIGHT - (Math.random() * 200 + 50),
+                width: Math.random() * 300 + 100,
+                height: 600,
+                color: hexToRgba(levelData.groundColor, 0.5), // More visible
+                parallax: 0.5
+            });
+        }
+        bgLayers.current = bgObjs;
+
+        // Foreground (Parallax 1.2) - Fast moving bushes/rocks
+        for (let i = 0; i < worldEnd; i += Math.random() * 800 + 400) {
+            fgObjs.push({
+                x: i,
+                y: WORLD_HEIGHT - (Math.random() * 30 + 20),
+                width: Math.random() * 60 + 40,
+                height: 60,
+                color: hexToRgba('#1a1a1a', 0.3), // Dark silhouette
+                parallax: 1.2
+            });
+        }
+        fgLayers.current = fgObjs;
+
         particles.current = [];
         cameraX.current = 0;
     }
@@ -294,7 +338,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               x, y,
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
-              life: 2.0, // Longer life for fireworks
+              life: 2.0, 
               color,
               size: Math.random() * 4 + 2
           });
@@ -315,8 +359,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       const now = Date.now();
       if (now > p.invulnerableUntil) {
           setLives(l => l - 1);
-          p.invulnerableUntil = now + 2000; // 2s invulnerability
-          // Knockback
+          p.invulnerableUntil = now + 2000; 
           p.vy = -5;
           p.vx = (p.x < fromX) ? -8 : 8;
           createExplosion(p.x, p.y, '#ECA758');
@@ -327,19 +370,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const update = useCallback(() => {
     const now = Date.now();
 
-    // --- FIREWORKS (Level Complete) ---
     if (gameState === GameState.LEVEL_COMPLETE) {
-        if (Math.random() < 0.05) { // 5% chance per frame
+        if (Math.random() < 0.05) { 
             const fx = cameraX.current + Math.random() * 800;
             const fy = Math.random() * 300 + 50;
             createFirework(fx, fy);
         }
-        // Still update particles
         particles.current.forEach(pt => {
             pt.x += pt.vx;
             pt.y += pt.vy;
             pt.life -= 0.02;
-            pt.vy += 0.1; // Gravity for particles
+            pt.vy += 0.1; 
         });
         particles.current = particles.current.filter(pt => pt.life > 0);
         return;
@@ -349,26 +390,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     
     const p = player.current;
 
-    // Death Check (Lives)
     if (lives <= 0) {
         setGameState(GameState.GAME_OVER);
         return;
     }
 
-    // --- 0. ATTACK INPUT ---
     if (p.attackCooldown > 0) p.attackCooldown--;
     if (p.attackTimer > 0) p.attackTimer--;
     else p.isAttacking = false;
 
     if ((keys.current['KeyZ'] || keys.current['KeyK']) && p.attackCooldown <= 0) {
         p.isAttacking = true;
-        p.attackTimer = 15; // Attack lasts 15 frames
-        p.attackCooldown = 30; // Cooldown
+        p.attackTimer = 15; 
+        p.attackCooldown = 30; 
     }
 
-    // --- 1. INPUT & HORIZONTAL MOVEMENT ---
-    
-    // Acceleration
     if (keys.current['ArrowRight'] || keys.current['KeyD']) {
         if (p.vx < 6) p.vx += PHYSICS.speed;
         p.facingRight = true;
@@ -379,13 +415,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         p.vx *= PHYSICS.friction;
     }
 
-    // Apply X Velocity
     p.x += p.vx;
 
-    // World Bounds (Left)
     if (p.x < 0) { p.x = 0; p.vx = 0; }
 
-    // --- 2. X-AXIS COLLISION ---
     for (const plat of platforms.current) {
         if (
             p.x < plat.x + plat.width &&
@@ -393,23 +426,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             p.y < plat.y + plat.height &&
             p.y + p.height > plat.y
         ) {
-            // Horizontal collision
-            // Determine direction based on velocity/centers
             if (p.vx > 0) { 
-                // Moving right, hit left side
                 p.x = plat.x - p.width;
                 p.vx = 0;
             } else if (p.vx < 0) {
-                // Moving left, hit right side
                 p.x = plat.x + plat.width;
                 p.vx = 0;
             }
         }
     }
 
-    // --- 3. VERTICAL MOVEMENT & GRAVITY ---
-
-    // Jump Input
     const isJumpPressed = keys.current['Space'] || keys.current['ArrowUp'] || keys.current['KeyW'];
     if (isJumpPressed && p.grounded) {
         p.vy = PHYSICS.jumpForce;
@@ -417,19 +443,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         createExplosion(p.x + p.width/2, p.y + p.height, '#FFF');
     }
     
-    // Variable Jump Height Cutoff
     if (!p.grounded && p.vy < 0 && !isJumpPressed) {
         p.vy *= 0.9;
     }
 
-    // Apply Gravity
     p.vy += PHYSICS.gravity;
-    
-    // Apply Y Velocity
     p.y += p.vy;
-    p.grounded = false; // Assume falling until collision proves otherwise
+    p.grounded = false; 
 
-    // --- 4. Y-AXIS COLLISION ---
     for (const plat of platforms.current) {
         if (
             p.x < plat.x + plat.width &&
@@ -437,26 +458,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             p.y < plat.y + plat.height &&
             p.y + p.height > plat.y
         ) {
-            // Vertical collision
             if (p.vy > 0) {
-                // Falling down, hit top
                 p.y = plat.y - p.height;
                 p.vy = 0;
                 p.grounded = true;
             } else if (p.vy < 0) {
-                // Jumping up, hit bottom
                 p.y = plat.y + plat.height;
                 p.vy = 0;
             }
         }
     }
 
-    // --- 5. ENEMY LOGIC ---
     enemies.current.forEach(enemy => {
         let nextX = enemy.x + enemy.vx;
         let shouldTurn = false;
 
-        // Check for Wall Collision
         const hitWall = platforms.current.some(plat => 
             nextX < plat.x + plat.width &&
             nextX + enemy.width > plat.x &&
@@ -466,7 +482,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         if (hitWall) shouldTurn = true;
 
-        // Check for Ledges (Prevent falling off)
         if (!shouldTurn) {
             const lookAheadX = enemy.vx > 0 ? nextX + enemy.width : nextX;
             const lookAheadY = enemy.y + enemy.height + 4;
@@ -487,7 +502,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             enemy.x = nextX;
         }
 
-        // ATTACK HITBOX CALCULATION
         let attackHit = false;
         if (p.isAttacking) {
             const range = 30;
@@ -504,10 +518,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
         }
 
-
-        // COLLISION WITH PLAYER
         if (attackHit) {
-             // Killed by Bite
              createExplosion(enemy.x, enemy.y, '#9CA3AF');
              enemies.current = enemies.current.filter(e => e.id !== enemy.id);
              setScore(prev => prev + 150);
@@ -517,7 +528,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             p.y < enemy.y + enemy.height &&
             p.y + p.height > enemy.y
         ) {
-            // Mario Stomp Check
             if (p.vy > 0 && p.y + p.height - p.vy < enemy.y + enemy.height * 0.6) {
                 createExplosion(enemy.x, enemy.y, '#9CA3AF');
                 enemies.current = enemies.current.filter(e => e.id !== enemy.id);
@@ -529,20 +539,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     });
 
-    // --- 6. OBSTACLES (Spikes) ---
     obstacles.current.forEach(obs => {
         if (
-            p.x + 10 < obs.x + obs.width - 10 && // Tighter hitbox for spikes
+            p.x + 10 < obs.x + obs.width - 10 && 
             p.x + p.width - 10 > obs.x + 10 &&
             p.y + 10 < obs.y + obs.height &&
             p.y + p.height > obs.y + 10
         ) {
-            // Spikes always hurt
             takeDamage(obs.x);
         }
     });
 
-    // --- 7. COLLECTIBLES & GOAL ---
     collectibles.current.forEach(c => {
         if (!c.collected &&
             p.x < c.x + c.width &&
@@ -556,7 +563,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     });
 
-    // Tennis Balls (Extra Life)
     tennisBalls.current.forEach(tb => {
         if (!tb.collected &&
             p.x < tb.x + tb.width &&
@@ -571,7 +577,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     });
 
-    // Goal Check
     const g = goalRef.current;
     if (
         p.x < g.x + g.width &&
@@ -582,7 +587,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         setGameState(GameState.LEVEL_COMPLETE);
     }
 
-    // --- 8. PARTICLES ---
     particles.current.forEach(pt => {
         pt.x += pt.vx;
         pt.y += pt.vy;
@@ -590,11 +594,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
     particles.current = particles.current.filter(pt => pt.life > 0);
 
-    // --- 9. CAMERA ---
     const targetCamX = p.x - 300; 
     cameraX.current += (targetCamX - cameraX.current) * 0.1;
 
-    // Death by falling
     if (p.y > WORLD_HEIGHT + 100) {
         respawnPlayer();
     }
@@ -609,36 +611,62 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Animation Loop
     const render = () => {
-        // If playing or level complete (for fireworks), run update
         if (gameState === GameState.PLAYING || gameState === GameState.LEVEL_COMPLETE) update();
 
-        // Clear Background
-        ctx.fillStyle = levelData.backgroundColor;
+        // 1. Sky Gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        gradient.addColorStop(0, levelData.backgroundColor);
+        gradient.addColorStop(1, '#e0f7fa'); // Fade to light cyan/white at bottom
+        ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        ctx.save();
-        // Apply Camera
+        // 2. Background Layers (Parallax)
         const camX = Math.max(0, cameraX.current);
+        
+        // Far Layer
+        bgLayers.current.forEach(bg => {
+            // Simple Parallax Calc
+            const x = bg.x - (camX * bg.parallax);
+            // Optim: Only draw if on screen
+            if (x + bg.width > 0 && x < canvas.width) {
+                ctx.fillStyle = bg.color;
+                // Draw stepped mountain/hill
+                ctx.fillRect(x, bg.y, bg.width, bg.height);
+                // Add a highlight edge
+                ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                ctx.fillRect(x, bg.y, 10, bg.height);
+            }
+        });
+
+        ctx.save();
         ctx.translate(-camX, 0);
 
-        // Draw Platforms
+        // 3. Platforms (Main Layer)
         levelData.platforms.forEach(plat => {
-            // Fill solid color for "earth"
-            ctx.fillStyle = levelData.groundColor;
-            ctx.fillRect(plat.x, plat.y, plat.width, 200); // Extend deep for ground feel
+            // Draw Deep Earth with Gradient for Depth
+            const earthGrad = ctx.createLinearGradient(0, plat.y, 0, plat.y + 200);
+            earthGrad.addColorStop(0, levelData.groundColor);
+            earthGrad.addColorStop(1, 'rgba(0,0,0,0.8)'); // Fade to dark
+            ctx.fillStyle = earthGrad;
+            ctx.fillRect(plat.x, plat.y, plat.width, 200); 
             
+            // Side/Shadow on right edge for blockiness
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(plat.x + plat.width - 8, plat.y, 8, 200);
+
             // Draw Top Layer
             ctx.fillStyle = plat.type === 'grass' ? '#4CAF50' : 
                             plat.type === 'stone' ? '#757575' : 
                             plat.type === 'lava' ? '#FF5722' : '#FFFFFF';
             ctx.fillRect(plat.x, plat.y, plat.width, 8);
+            
+            // Top Highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.2)';
+            ctx.fillRect(plat.x, plat.y, plat.width, 2);
         });
         
-        // Note: Hardcoded ground render removed. Ground is now composed of platforms.
-
-        // Draw Obstacles (Spikes)
+        // Draw Obstacles
         obstacles.current.forEach(o => {
             drawVoxelSprite(ctx, SPRITE_SPIKE, o.x, o.y, 3.0, true);
         });
@@ -650,52 +678,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             drawVoxelSprite(ctx, SPRITE_BONE, c.x, c.y + bob, 3, true);
         });
 
-        // Draw Tennis Balls (Extra Life)
         tennisBalls.current.forEach(tb => {
             if (tb.collected) return;
             const bob = Math.cos(Date.now() / 200) * 5;
             drawVoxelSprite(ctx, SPRITE_TENNIS_BALL, tb.x, tb.y + bob, 3, true);
         });
 
-        // Draw Goal
         const g = goalRef.current;
         drawVoxelSprite(ctx, SPRITE_DOGHOUSE, g.x, g.y, 3.0, true);
 
-        // Draw Enemies
         enemies.current.forEach(e => {
             if (e.type === 'cat') {
-              // Walking animation
               const isWalkingFrame = Math.floor(Date.now() / 150) % 2 === 0;
               const sprite = (Math.abs(e.vx) > 0 && isWalkingFrame) ? SPRITE_CAT_WALK : SPRITE_CAT;
-              
-              // Use palette variant for color
               const variantPalette = CAT_VARIANTS[e.variant];
-              
               drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette);
             }
         });
 
-        // Draw Player
         const p = player.current;
         p.frameTimer++;
         
-        // Check Invulnerability Flashing
         let drawPlayer = true;
         if (Date.now() < p.invulnerableUntil) {
             if (Math.floor(Date.now() / 100) % 2 === 0) drawPlayer = false;
         }
 
-        // Draw player only if playing or completing level
         if (gameState === GameState.PLAYING || gameState === GameState.LEVEL_COMPLETE || gameState === GameState.GAME_OVER) {
              if (drawPlayer) {
                 let sprite = SPRITE_CORGI_IDLE;
                 if (p.isAttacking) {
                     sprite = SPRITE_CORGI_BITE;
                 } else if (!p.grounded) {
-                    // Angled Leap Logic
                     if (p.vy < -1) sprite = SPRITE_CORGI_LEAP_UP;
                     else if (p.vy > 1) sprite = SPRITE_CORGI_LEAP_DOWN;
-                    else sprite = SPRITE_CORGI_JUMP; // Neutral air
+                    else sprite = SPRITE_CORGI_JUMP; 
                 } else if (Math.abs(p.vx) > 0.1 && Math.floor(p.frameTimer / 10) % 2 === 0) {
                     sprite = SPRITE_CORGI_RUN_1;
                 }
@@ -704,7 +721,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             }
         }
 
-        // Draw Particles
         particles.current.forEach(pt => {
             ctx.globalAlpha = Math.max(0, pt.life);
             ctx.fillStyle = pt.color;
@@ -713,8 +729,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         });
 
         ctx.restore();
+
+        // 4. Foreground (Parallax 1.2) - Drawn on top of everything
+        fgLayers.current.forEach(fg => {
+             const x = fg.x - (camX * fg.parallax);
+             if (x + fg.width > 0 && x < canvas.width) {
+                 ctx.fillStyle = fg.color;
+                 // Simple bush shape
+                 ctx.beginPath();
+                 ctx.arc(x + fg.width/2, fg.y + fg.height/2, fg.width/2, 0, Math.PI * 2);
+                 ctx.fill();
+             }
+        });
         
-        // Draw HUD (Lives - Now Tennis Balls)
+        // HUD
         if (gameState === GameState.PLAYING) {
             for (let i = 0; i < lives; i++) {
                 drawVoxelSprite(ctx, SPRITE_TENNIS_BALL, 760 - (i * 32), 20, 3.0, true);
