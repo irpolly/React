@@ -1,6 +1,7 @@
+
 import React, { useRef, useEffect, useCallback } from 'react';
-import { GameState, LevelData, Platform, Enemy, Collectible, Particle, SpriteFrame } from '../types';
-import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE } from '../constants';
+import { GameState, LevelData, Platform, Enemy, Collectible, Particle, SpriteFrame, Projectile } from '../types';
+import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE, SPRITE_SQUIRREL, SPRITE_SQUIRREL_IDLE_1, SPRITE_SQUIRREL_IDLE_2, SPRITE_SQUIRREL_SHOOT, SPRITE_NUT } from '../constants';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -55,6 +56,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const keys = useRef<{ [key: string]: boolean }>({});
   const platforms = useRef<Platform[]>([]);
   const enemies = useRef<Enemy[]>([]);
+  const projectiles = useRef<Projectile[]>([]);
   const collectibles = useRef<Collectible[]>([]);
   const tennisBalls = useRef<Collectible[]>([]); 
   const obstacles = useRef<{x: number, y: number, width: number, height: number}[]>([]);
@@ -94,8 +96,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Prepare enemies with robust ground snapping
         enemies.current = levelData.enemies.map((e, i) => {
-            const width = 48; 
-            const height = 42; 
+            const isSquirrel = e.type === 'squirrel';
+            // Scale 2.0 for Squirrels (32x32 -> 64x64)
+            const width = isSquirrel ? SPRITE_SQUIRREL.width * 2.0 : 48; 
+            const height = isSquirrel ? SPRITE_SQUIRREL.height * 2.0 : 42; 
+            
             const centerX = e.x + width / 2;
             
             const groundPlat = platforms.current
@@ -110,13 +115,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 y: finalY, 
                 width: width,
                 height: height,
-                vx: 2,
+                vx: isSquirrel ? 0 : 2, // Squirrels are stationary
                 type: e.type,
                 patrolStart: e.x - 100,
                 patrolEnd: e.x + 100,
-                variant: Math.floor(Math.random() * 4)
+                variant: Math.floor(Math.random() * 4),
+                attackCooldown: Math.random() * 200 // Random start delay
             };
         });
+
+        projectiles.current = [];
 
         collectibles.current = levelData.collectibles.map((c, i) => ({
             id: `c-${i}`,
@@ -469,39 +477,73 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
     }
 
+    // --- ENEMY LOGIC ---
     enemies.current.forEach(enemy => {
-        let nextX = enemy.x + enemy.vx;
-        let shouldTurn = false;
+        // Squirrel Logic (Stationary Turret)
+        if (enemy.type === 'squirrel') {
+             // Always face player
+             const diffX = p.x - enemy.x;
+             
+             // Fire Projectiles
+             if (enemy.attackCooldown > 0) {
+                 enemy.attackCooldown--;
+             } else {
+                 // Only fire if player is within range
+                 if (Math.abs(diffX) < 600) {
+                     projectiles.current.push({
+                         id: Math.random().toString(),
+                         // Spawn at front hand (approx 20px from front, 25px down from top)
+                         x: enemy.x + (diffX > 0 ? enemy.width - 10 : 10), 
+                         y: enemy.y + 25, 
+                         vx: diffX > 0 ? 6 : -6, 
+                         vy: -7, // Slightly higher arc
+                         width: 30, 
+                         height: 30,
+                         type: 'nut'
+                     });
+                     // Reset Cooldown (Faster: 60-120 frames = ~1-2s)
+                     enemy.attackCooldown = 60 + Math.random() * 60;
+                 }
+             }
+             // No Return here, allow fall-through to collision logic
+        }
 
-        const hitWall = platforms.current.some(plat => 
-            nextX < plat.x + plat.width &&
-            nextX + enemy.width > plat.x &&
-            enemy.y + 2 < plat.y + plat.height && 
-            enemy.y + enemy.height - 2 > plat.y
-        );
+        // Cat/Bat Logic (Movement)
+        if (enemy.type !== 'squirrel') {
+            let nextX = enemy.x + enemy.vx;
+            let shouldTurn = false;
 
-        if (hitWall) shouldTurn = true;
-
-        if (!shouldTurn) {
-            const lookAheadX = enemy.vx > 0 ? nextX + enemy.width : nextX;
-            const lookAheadY = enemy.y + enemy.height + 4;
-
-            const hasGround = platforms.current.some(plat => 
-                lookAheadX >= plat.x &&
-                lookAheadX <= plat.x + plat.width &&
-                lookAheadY >= plat.y && 
-                lookAheadY <= plat.y + plat.height
+            const hitWall = platforms.current.some(plat => 
+                nextX < plat.x + plat.width &&
+                nextX + enemy.width > plat.x &&
+                enemy.y + 2 < plat.y + plat.height && 
+                enemy.y + enemy.height - 2 > plat.y
             );
 
-            if (!hasGround) shouldTurn = true;
-        }
-        
-        if (shouldTurn) {
-            enemy.vx *= -1;
-        } else {
-            enemy.x = nextX;
+            if (hitWall) shouldTurn = true;
+
+            if (!shouldTurn) {
+                const lookAheadX = enemy.vx > 0 ? nextX + enemy.width : nextX;
+                const lookAheadY = enemy.y + enemy.height + 4;
+
+                const hasGround = platforms.current.some(plat => 
+                    lookAheadX >= plat.x &&
+                    lookAheadX <= plat.x + plat.width &&
+                    lookAheadY >= plat.y && 
+                    lookAheadY <= plat.y + plat.height
+                );
+
+                if (!hasGround) shouldTurn = true;
+            }
+            
+            if (shouldTurn) {
+                enemy.vx *= -1;
+            } else {
+                enemy.x = nextX;
+            }
         }
 
+        // Collision with Player
         let attackHit = false;
         if (p.isAttacking) {
             const range = 30;
@@ -536,6 +578,39 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             } else {
                 takeDamage(enemy.x);
             }
+        }
+    });
+
+    // --- PROJECTILE LOGIC ---
+    projectiles.current.forEach((proj, idx) => {
+        proj.x += proj.vx;
+        proj.y += proj.vy;
+        proj.vy += 0.2; // Slightly stronger gravity
+
+        // Collision with player
+        if (
+            p.x < proj.x + proj.width &&
+            p.x + p.width > proj.x &&
+            p.y < proj.y + proj.height &&
+            p.y + p.height > proj.y
+        ) {
+             takeDamage(proj.x);
+             projectiles.current.splice(idx, 1);
+             createExplosion(proj.x, proj.y, '#8B4513');
+             return;
+        }
+
+        // Collision with platforms (destroy nut)
+        const hitGround = platforms.current.some(plat => 
+            proj.x < plat.x + plat.width &&
+            proj.x + proj.width > plat.x &&
+            proj.y < plat.y + plat.height &&
+            proj.y + proj.height > plat.y
+        );
+
+        if (hitGround || proj.y > WORLD_HEIGHT) {
+            projectiles.current.splice(idx, 1);
+             if (hitGround) createExplosion(proj.x, proj.y, '#8B4513');
         }
     });
 
@@ -687,16 +762,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const g = goalRef.current;
         drawVoxelSprite(ctx, SPRITE_DOGHOUSE, g.x, g.y, 3.0, true);
 
+        const p = player.current;
+
         enemies.current.forEach(e => {
             if (e.type === 'cat') {
               const isWalkingFrame = Math.floor(Date.now() / 150) % 2 === 0;
               const sprite = (Math.abs(e.vx) > 0 && isWalkingFrame) ? SPRITE_CAT_WALK : SPRITE_CAT;
               const variantPalette = CAT_VARIANTS[e.variant];
               drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette);
+            } else if (e.type === 'squirrel') {
+                const facingPlayer = p.x > e.x;
+                
+                // Animation Logic for Squirrel
+                let sprite = SPRITE_SQUIRREL_IDLE_1;
+                
+                if (e.attackCooldown) {
+                    if (e.attackCooldown < 20) {
+                        // Prep to shoot (could add a PREP frame, but for now just ensure it's not Shoot yet)
+                         sprite = SPRITE_SQUIRREL_IDLE_2;
+                    } else if (e.attackCooldown > (60 + 40)) { // Just shot (approx logic based on reset)
+                        // Just shot
+                        sprite = SPRITE_SQUIRREL_SHOOT;
+                    } else {
+                        // Idle Animation
+                        const isFrame2 = Math.floor(Date.now() / 300) % 2 === 0;
+                        sprite = isFrame2 ? SPRITE_SQUIRREL_IDLE_2 : SPRITE_SQUIRREL_IDLE_1;
+                    }
+                }
+                
+                // Use 2.0 scale for the larger 32px sprite
+                drawVoxelSprite(ctx, sprite, e.x, e.y, 2.0, facingPlayer);
             }
         });
 
-        const p = player.current;
+        // Draw Projectiles
+        projectiles.current.forEach(proj => {
+            drawVoxelSprite(ctx, SPRITE_NUT, proj.x, proj.y, 3.0, true);
+        });
+
         p.frameTimer++;
         
         let drawPlayer = true;

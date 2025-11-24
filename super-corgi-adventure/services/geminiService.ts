@@ -45,7 +45,8 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
       4. Platforms: Max jump height is ~150px.
       5. Tennis Ball: Place exactly ONE 'tennisBall' (extra life) in a hard-to-reach spot (high platform or hidden area).
       6. Obstacles: Place spikes on the ground/platforms.
-      7. Return valid JSON.
+      7. Enemies: You can place 'cat' (walking enemy) or 'squirrel' (stationary catapult enemy that shoots projectiles).
+      8. Return valid JSON.
     `;
 
     const response = await ai.models.generateContent({
@@ -79,7 +80,7 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
                 properties: {
                   x: { type: Type.NUMBER },
                   y: { type: Type.NUMBER },
-                  type: { type: Type.STRING, enum: ["cat", "bat"] }
+                  type: { type: Type.STRING, enum: ["cat", "bat", "squirrel"] }
                 },
                 required: ["x", "y", "type"]
               }
