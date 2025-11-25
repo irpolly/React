@@ -481,31 +481,43 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     enemies.current.forEach(enemy => {
         // Squirrel Logic (Stationary Turret)
         if (enemy.type === 'squirrel') {
-             // Always face player
-             const diffX = p.x - enemy.x;
+             const dx = p.x - enemy.x;
+             const dy = (p.y + p.height / 2) - (enemy.y + 20); // Aim at player center relative to shoot height
+             const dist = Math.sqrt(dx * dx + dy * dy);
              
-             // Fire Projectiles
              if (enemy.attackCooldown > 0) {
                  enemy.attackCooldown--;
              } else {
-                 // Only fire if player is within range
-                 if (Math.abs(diffX) < 600) {
+                 // Fire logic
+                 if (dist < 700) { // Range check
+                     // Ballistic Estimation
+                     const projSpeed = 9; // Horizontal-ish speed base
+                     const gravity = 0.2; // Gravity per frame (approximate from projectile logic below)
+                     const timeToTarget = Math.abs(dx) / projSpeed; 
+                     
+                     // dy = vy * t + 0.5 * g * t^2  =>  vy = (dy - 0.5 * g * t^2) / t
+                     let vy = (dy - 0.5 * gravity * timeToTarget * timeToTarget) / timeToTarget;
+                     
+                     // Clamps to ensure reasonable firing arcs
+                     if (vy < -12) vy = -12; 
+                     if (vy > 2) vy = 2; 
+
+                     const vx = dx > 0 ? projSpeed : -projSpeed;
+
                      projectiles.current.push({
                          id: Math.random().toString(),
-                         // Spawn at front hand (approx 20px from front, 25px down from top)
-                         x: enemy.x + (diffX > 0 ? enemy.width - 10 : 10), 
+                         x: enemy.x + (dx > 0 ? enemy.width - 10 : 10), 
                          y: enemy.y + 25, 
-                         vx: diffX > 0 ? 6 : -6, 
-                         vy: -7, // Slightly higher arc
+                         vx: vx, 
+                         vy: vy, 
                          width: 30, 
                          height: 30,
                          type: 'nut'
                      });
-                     // Reset Cooldown (Faster: 60-120 frames = ~1-2s)
-                     enemy.attackCooldown = 60 + Math.random() * 60;
+                     // Reset Cooldown 
+                     enemy.attackCooldown = 90 + Math.random() * 60;
                  }
              }
-             // No Return here, allow fall-through to collision logic
         }
 
         // Cat/Bat Logic (Movement)
@@ -780,7 +792,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     if (e.attackCooldown < 20) {
                         // Prep to shoot (could add a PREP frame, but for now just ensure it's not Shoot yet)
                          sprite = SPRITE_SQUIRREL_IDLE_2;
-                    } else if (e.attackCooldown > (60 + 40)) { // Just shot (approx logic based on reset)
+                    } else if (e.attackCooldown > (90 + 40)) { // Just shot (approx logic based on reset)
                         // Just shot
                         sprite = SPRITE_SQUIRREL_SHOOT;
                     } else {
