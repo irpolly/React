@@ -25,10 +25,10 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
     if (params.length === 'Medium') worldWidth = 6000;
     if (params.length === 'Long') worldWidth = 12000;
 
-    const enemyPrompt = params.enemyDensity === 'High' ? "Lots of enemies and ground spikes." : 
-                       params.enemyDensity === 'Medium' ? "Moderate amount of enemies and spikes." : "Very few enemies or hazards.";
+    const enemyPrompt = params.enemyDensity === 'High' ? "Lots of enemies." : 
+                       params.enemyDensity === 'Medium' ? "Moderate amount of enemies." : "Very few enemies.";
     
-    const difficultyPrompt = params.difficulty === 'Hard' ? "Challenging jumps, smaller platforms, more gaps, more spikes." : 
+    const difficultyPrompt = params.difficulty === 'Hard' ? "Challenging jumps, smaller platforms, more gaps." : 
                             params.difficulty === 'Medium' ? "Balanced platforming." : "Large platforms, easy jumps, safe falls.";
 
     const systemPrompt = `
@@ -44,9 +44,8 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
       3. Goal: Place a 'goal' near x=${worldWidth - 200}. It MUST be on a ground platform (approx y=550).
       4. Platforms: Max jump height is ~150px.
       5. Tennis Ball: Place exactly ONE 'tennisBall' (extra life) in a hard-to-reach spot (high platform or hidden area).
-      6. Obstacles: Place spikes on the ground/platforms.
-      7. Enemies: You can place 'cat' (walking enemy) or 'squirrel' (stationary catapult enemy that shoots projectiles).
-      8. Return valid JSON.
+      6. Enemies: You can place 'cat' (walking), 'rat' (walking fast), 'bat' (flying), or 'squirrel' (stationary catapult).
+      7. Return valid JSON.
     `;
 
     const response = await ai.models.generateContent({
@@ -80,7 +79,7 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
                 properties: {
                   x: { type: Type.NUMBER },
                   y: { type: Type.NUMBER },
-                  type: { type: Type.STRING, enum: ["cat", "bat", "squirrel"] }
+                  type: { type: Type.STRING, enum: ["cat", "bat", "squirrel", "rat"] }
                 },
                 required: ["x", "y", "type"]
               }

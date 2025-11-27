@@ -37,6 +37,10 @@ export const WORLD_HEIGHT = 600;
 // 21: Wood Brown (Catapult / Squirrel Fur)
 // 22: Dark Wood (Catapult Shadow / Squirrel Shadow / Acorn Cap)
 // 23: Squirrel Tan (Belly/Face/Acorn Body)
+// 24: Rat Grey
+// 25: Rat Pink (Tail/Ears)
+// 26: Bat Purple
+// 27: Bat Dark Purple
 export const PALETTE: Record<number, string> = {
   0: 'transparent',
   1: '#ECA758', // Corgi Orange
@@ -62,6 +66,10 @@ export const PALETTE: Record<number, string> = {
   21: '#D97726', // Squirrel Fur (Orange-Brown)
   22: '#78350F', // Dark Wood / Shadow
   23: '#FDE68A', // Squirrel Tan / Acorn Body
+  24: '#71717a', // Rat Grey
+  25: '#fda4af', // Rat Pink
+  26: '#7e22ce', // Bat Purple
+  27: '#581c87', // Bat Dark
 };
 
 // --- CAT PALETTE VARIANTS ---
@@ -268,9 +276,6 @@ export const SPRITE_CAT_WALK: SpriteFrame = {
 };
 
 // --- SQUIRREL ANIMATED SPRITES (32x32) ---
-// Refined "Cartoon" Style with FLUFFY S-SHAPED TAIL
-
-// Frame 1: Idle
 export const SPRITE_SQUIRREL_IDLE_1: SpriteFrame = {
   width: 32,
   height: 32,
@@ -331,7 +336,7 @@ export const SPRITE_SQUIRREL_IDLE_2: SpriteFrame = {
     [0,0,0,0,0,0,0,0,21,21,21,21,21,21,0,0,0,0,0,0,21,21,21,21,21,0,0,0,0,0], // Neck
     [0,0,0,0,0,0,0,21,21,21,21,21,21,21,0,0,0,0,0,21,21,23,23,23,21,0,0,22,0,0], // Body / Slingshot
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,0,21,21,23,23,23,23,21,0,22,0,22],
-    [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,21,21,21,23,23,23,23,21,0,22,0,22],
+    [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,21,21,21,23,23,23,21,0,22,0,22],
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,21,21,21,21,23,23,23,21,0,0,22,0,0], // Fork
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,21,21,21,21,21,23,23,23,21,22,22,22,0,0,0,0], // Hand
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,23,23,21,21,22,0,0,0,0,0,0],
@@ -374,7 +379,7 @@ export const SPRITE_SQUIRREL_SHOOT: SpriteFrame = {
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,21,21,21,23,23,23,21,21,21,22,0,22,0],
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,0,21,21,21,21,23,23,23,21,0,0,22,0,22,0,0], // Fork
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,0,0,21,21,21,21,21,23,23,21,21,0,0,22,22,22,0,0], // Hand
-    [0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,23,23,21,21,0,0,22,0,0,0,0],
+    [0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,23,23,21,21,0,0,22,0,0,0,0,0,0],
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,23,23,21,21,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,0,0,0,0,0,0,0,0],
     [0,0,0,0,0,0,0,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,0,0,0,0,0,0,0,0,0],
@@ -392,6 +397,40 @@ export const SPRITE_SQUIRREL_SHOOT: SpriteFrame = {
 
 // Export default idle for compatibility
 export const SPRITE_SQUIRREL = SPRITE_SQUIRREL_IDLE_1;
+
+export const SPRITE_RAT: SpriteFrame = {
+  width: 16,
+  height: 10,
+  pixels: [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,25,0,25,0,0,0], // Ears
+    [0,0,0,0,0,0,0,0,0,24,24,24,24,24,0,0],
+    [0,0,0,0,0,0,0,24,24,24,24,24,24,25,0,0], // Nose
+    [0,0,0,0,25,24,24,24,24,24,24,24,24,24,0,0], // Body
+    [0,0,0,25,24,24,24,24,24,24,24,24,24,24,0,0],
+    [0,0,25,24,24,24,24,24,24,24,24,24,0,0,0,0],
+    [0,0,0,0,25,0,25,0,0,25,0,25,0,0,0,0] // Legs
+  ]
+};
+
+export const SPRITE_BAT: SpriteFrame = {
+  width: 16,
+  height: 10,
+  pixels: [
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,26,0,0,0,0,26,0,0,0,0,0], // Ears
+    [0,0,0,0,26,26,26,26,26,26,0,0,0,0,0,0], // Head/Body
+    [0,27,27,27,26,8,26,8,26,27,27,27,0,0,0,0], // Wings/Eyes
+    [27,27,27,27,26,26,26,26,26,27,27,27,27,0,0,0],
+    [27,27,0,27,26,26,26,26,26,27,0,27,27,0,0,0],
+    [27,0,0,0,26,26,26,26,26,0,0,0,27,0,0,0],
+    [0,0,0,0,0,26,0,26,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  ]
+};
 
 // Nut Projectile - REFINED ACORN STYLE
 export const SPRITE_NUT: SpriteFrame = {
@@ -580,12 +619,7 @@ export const DEFAULT_LEVEL: LevelData = {
     { x: 4700, y: 550, type: "cat" },
     { x: 5000, y: 550, type: "cat" }
   ],
-  obstacles: [
-    { x: 1400, y: 550, type: "spike" },
-    { x: 1850, y: 550, type: "spike" },
-    { x: 3000, y: 350, type: "spike" },
-    { x: 4100, y: 550, type: "spike" } // Lava spikes?
-  ],
+  obstacles: [], // No spikes
   collectibles: [
     { x: 350, y: 480 },
     { x: 700, y: 440 },
@@ -601,4 +635,58 @@ export const DEFAULT_LEVEL: LevelData = {
       { x: 3250, y: 200 } // Extra life high up
   ],
   goal: { x: 5200, y: 550 }
+};
+
+export const LEVEL_2: LevelData = {
+  themeName: "Undercity Sewers",
+  backgroundColor: "#1a1025", // Dark Purple/Black
+  groundColor: "#2d2d2d", // Dark Grey
+  platforms: [
+    // Segment 1: The Descent
+    { x: -200, y: 550, width: 400, type: "stone" },
+    { x: 300, y: 500, width: 200, type: "stone" },
+    { x: 550, y: 450, width: 150, type: "stone" },
+    { x: 750, y: 550, width: 300, type: "stone" },
+    
+    // Segment 2: Bat Caves (Floating platforms)
+    { x: 1100, y: 550, width: 150, type: "lava" }, // Sludge
+    { x: 1150, y: 400, width: 100, type: "stone" },
+    { x: 1300, y: 350, width: 100, type: "stone" },
+    { x: 1500, y: 300, width: 150, type: "stone" },
+    { x: 1700, y: 400, width: 100, type: "stone" },
+    { x: 1900, y: 550, width: 300, type: "stone" },
+
+    // Segment 3: Rat Run
+    { x: 2300, y: 550, width: 800, type: "stone" },
+    { x: 2500, y: 400, width: 400, type: "stone" }, // Upper deck
+
+    // Segment 4: Final Challenge
+    { x: 3200, y: 550, width: 200, type: "lava" },
+    { x: 3250, y: 450, width: 100, type: "stone" },
+    { x: 3400, y: 350, width: 100, type: "stone" },
+    { x: 3600, y: 550, width: 400, type: "stone" }
+  ],
+  enemies: [
+    { x: 500, y: 480, type: "rat" },
+    { x: 800, y: 520, type: "rat" },
+    { x: 1200, y: 200, type: "bat" }, // Air enemy
+    { x: 1400, y: 150, type: "bat" },
+    { x: 1600, y: 250, type: "bat" },
+    { x: 2000, y: 520, type: "rat" },
+    { x: 2400, y: 520, type: "rat" },
+    { x: 2600, y: 370, type: "rat" }, // Upper deck rat
+    { x: 2800, y: 370, type: "rat" },
+    { x: 3300, y: 100, type: "bat" },
+    { x: 3500, y: 200, type: "bat" }
+  ],
+  obstacles: [],
+  collectibles: [
+      { x: 600, y: 400 },
+      { x: 1350, y: 300 },
+      { x: 2600, y: 300 }
+  ],
+  tennisBalls: [
+      { x: 1550, y: 250 }
+  ],
+  goal: { x: 3800, y: 550 }
 };

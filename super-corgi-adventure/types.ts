@@ -22,7 +22,7 @@ export interface Enemy {
   width: number;
   height: number;
   vx: number;
-  type: 'cat' | 'bat' | 'squirrel';
+  type: 'cat' | 'bat' | 'squirrel' | 'rat';
   patrolStart: number;
   patrolEnd: number;
   variant: number; // 0: Grey, 1: White, 2: Tuxedo, 3: Brown
@@ -66,7 +66,7 @@ export interface LevelData {
   backgroundColor: string;
   groundColor: string;
   platforms: Omit<Platform, 'height'>[]; // Height is standardized
-  enemies: { x: number; y: number; type: 'cat' | 'bat' | 'squirrel' }[];
+  enemies: { x: number; y: number; type: 'cat' | 'bat' | 'squirrel' | 'rat' }[];
   obstacles: { x: number; y: number; type: 'spike' }[];
   collectibles: { x: number; y: number }[];
   tennisBalls: { x: number; y: number }[];

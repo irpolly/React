@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameState, LevelData, Platform, Enemy, Collectible, Particle, SpriteFrame, Projectile } from '../types';
-import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE, SPRITE_SQUIRREL, SPRITE_SQUIRREL_IDLE_1, SPRITE_SQUIRREL_IDLE_2, SPRITE_SQUIRREL_SHOOT, SPRITE_NUT } from '../constants';
+import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE, SPRITE_SQUIRREL, SPRITE_SQUIRREL_IDLE_1, SPRITE_SQUIRREL_IDLE_2, SPRITE_SQUIRREL_SHOOT, SPRITE_NUT, SPRITE_RAT, SPRITE_BAT } from '../constants';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -96,18 +96,35 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Prepare enemies with robust ground snapping
         enemies.current = levelData.enemies.map((e, i) => {
-            const isSquirrel = e.type === 'squirrel';
-            // Scale 2.0 for Squirrels (32x32 -> 64x64)
-            const width = isSquirrel ? SPRITE_SQUIRREL.width * 2.0 : 48; 
-            const height = isSquirrel ? SPRITE_SQUIRREL.height * 2.0 : 42; 
+            let width = 48;
+            let height = 42;
+            let vx = 2;
+
+            if (e.type === 'squirrel') {
+                width = SPRITE_SQUIRREL.width * 2.0;
+                height = SPRITE_SQUIRREL.height * 2.0;
+                vx = 0;
+            } else if (e.type === 'rat') {
+                width = SPRITE_RAT.width * 3.0; // 48px
+                height = SPRITE_RAT.height * 3.0; // 30px
+                vx = 4; // Rats are faster
+            } else if (e.type === 'bat') {
+                width = SPRITE_BAT.width * 3.0; // 48px
+                height = SPRITE_BAT.height * 3.0; // 30px
+                vx = 3; // Bats fly
+            }
             
             const centerX = e.x + width / 2;
-            
-            const groundPlat = platforms.current
-                .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) 
-                .sort((a, b) => a.y - b.y)[0]; 
-            
-            const finalY = groundPlat ? groundPlat.y - height : e.y - height;
+            let finalY = e.y - height;
+
+            // Only snap walking enemies to ground
+            if (e.type !== 'bat') {
+                const groundPlat = platforms.current
+                    .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) 
+                    .sort((a, b) => a.y - b.y)[0]; 
+                
+                if (groundPlat) finalY = groundPlat.y - height;
+            }
 
             return {
                 id: `e-${i}`,
@@ -115,7 +132,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 y: finalY, 
                 width: width,
                 height: height,
-                vx: isSquirrel ? 0 : 2, // Squirrels are stationary
+                vx: vx, 
                 type: e.type,
                 patrolStart: e.x - 100,
                 patrolEnd: e.x + 100,
@@ -157,40 +174,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             height: 48
         }));
 
-        const autoSpikes: {x: number, y: number, width: number, height: number}[] = [];
-        levelData.platforms.forEach(plat => {
-            const platCenter = plat.x + plat.width / 2;
-            if (Math.abs(platCenter - 100) < 200) return; 
-            if (levelData.goal && 
-                levelData.goal.x > plat.x - 50 && levelData.goal.x < plat.x + plat.width + 50 &&
-                Math.abs(levelData.goal.y - plat.y) < 50) return;
-
-            const hasEnemy = levelData.enemies.some(e => 
-                e.x > plat.x - 40 && e.x < plat.x + plat.width + 40 && Math.abs(e.y - plat.y) < 80
-            );
-            if (hasEnemy) return;
-
-            const hasCollectible = levelData.collectibles.some(c =>
-                c.x > plat.x - 20 && c.x < plat.x + plat.width + 20 && Math.abs(c.y - plat.y) < 50
-            );
-            if (hasCollectible) return;
-
-            const hasObstacle = (levelData.obstacles || []).some(o =>
-                o.x > plat.x - 20 && o.x < plat.x + plat.width + 20 && Math.abs(o.y - plat.y) < 50
-            );
-            if (hasObstacle) return;
-            
-            if (plat.width >= 60 && Math.random() < 0.25) {
-                autoSpikes.push({
-                    x: platCenter - 24, 
-                    y: plat.y - 48,     
-                    width: 48,
-                    height: 48
-                });
-            }
-        });
-
-        obstacles.current = [...providedObstacles, ...autoSpikes];
+        // Removed auto-spikes logic as requested
+        obstacles.current = [...providedObstacles];
 
         if (levelData.goal) {
             const goalHeight = SPRITE_DOGHOUSE.height * 3.0;
@@ -520,8 +505,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              }
         }
 
-        // Cat/Bat Logic (Movement)
-        if (enemy.type !== 'squirrel') {
+        // Bat Logic (Flying)
+        if (enemy.type === 'bat') {
+             // Simple patrol with Sine Wave Bobbing
+             enemy.x += enemy.vx;
+             enemy.y += Math.sin(Date.now() / 200) * 2; // Bob effect
+
+             // Turn around at patrol limits
+             if (enemy.x > enemy.patrolEnd || enemy.x < enemy.patrolStart) {
+                 enemy.vx *= -1;
+             }
+        }
+
+        // Cat/Rat Logic (Ground Movement)
+        if (enemy.type === 'cat' || enemy.type === 'rat') {
             let nextX = enemy.x + enemy.vx;
             let shouldTurn = false;
 
@@ -704,7 +701,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // 1. Sky Gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, levelData.backgroundColor);
-        gradient.addColorStop(1, '#e0f7fa'); // Fade to light cyan/white at bottom
+        gradient.addColorStop(1, levelData.themeName.includes("Under") ? '#000000' : '#e0f7fa'); 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -782,6 +779,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const sprite = (Math.abs(e.vx) > 0 && isWalkingFrame) ? SPRITE_CAT_WALK : SPRITE_CAT;
               const variantPalette = CAT_VARIANTS[e.variant];
               drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette);
+            } else if (e.type === 'rat') {
+                const isWalkingFrame = Math.floor(Date.now() / 100) % 2 === 0; // Fast
+                drawVoxelSprite(ctx, SPRITE_RAT, e.x, e.y + (isWalkingFrame ? -2 : 0), 3.0, e.vx > 0);
+            } else if (e.type === 'bat') {
+                const isFlap = Math.floor(Date.now() / 100) % 2 === 0;
+                drawVoxelSprite(ctx, SPRITE_BAT, e.x, e.y + (isFlap ? -4 : 0), 3.0, e.vx > 0);
             } else if (e.type === 'squirrel') {
                 const facingPlayer = p.x > e.x;
                 

@@ -1,16 +1,18 @@
 
-
 import React, { useState } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { GameState, LevelData } from './types';
-import { DEFAULT_LEVEL } from './constants';
+import { DEFAULT_LEVEL, LEVEL_2 } from './constants';
 import { generateLevel, GenerationParams } from './services/geminiService';
-import { Loader2, Play, Skull, Wand2, RefreshCw, Award, Settings2 } from 'lucide-react';
+import { Loader2, Play, Skull, Wand2, RefreshCw, Award, Settings2, ArrowRight } from 'lucide-react';
+
+const LEVELS = [DEFAULT_LEVEL, LEVEL_2];
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
+  const [currentLevelIndex, setCurrentLevelIndex] = useState(0);
   const [levelData, setLevelData] = useState<LevelData>(DEFAULT_LEVEL);
   
   // Generation Params State
@@ -40,8 +42,24 @@ const App: React.FC = () => {
   const startGame = () => {
     setScore(0);
     setLives(3);
+    setCurrentLevelIndex(0);
+    setLevelData(LEVELS[0]);
     setGameState(GameState.PLAYING);
   };
+  
+  const handleNextLevel = () => {
+      const nextIdx = currentLevelIndex + 1;
+      if (nextIdx < LEVELS.length) {
+          setCurrentLevelIndex(nextIdx);
+          setLevelData(LEVELS[nextIdx]);
+          setGameState(GameState.PLAYING);
+      } else {
+          // If generated level or finished all levels, go back to menu or replay
+          setGameState(GameState.MENU);
+      }
+  };
+
+  const isLastLevel = currentLevelIndex >= LEVELS.length - 1;
 
   return (
     <div className="relative w-full h-screen flex items-center justify-center bg-neutral-900 text-white overflow-hidden select-none">
@@ -80,7 +98,7 @@ const App: React.FC = () => {
                     className="group relative px-8 py-4 bg-green-600 hover:bg-green-500 text-white font-pixel text-lg rounded shadow-[0px_4px_0px_0px_rgba(20,83,45,1)] active:shadow-none active:translate-y-1 transition-all flex items-center gap-2 mb-6"
                 >
                     <Play className="w-6 h-6 fill-current" />
-                    PLAY LEVEL
+                    PLAY ADVENTURE
                 </button>
 
                 <div className="w-full max-w-lg bg-neutral-800/80 p-4 rounded-lg border border-neutral-700">
@@ -193,18 +211,29 @@ const App: React.FC = () => {
                     <p className="font-pixel text-2xl text-white mb-8">SCORE: {score}</p>
                     
                     <div className="flex gap-4">
+                         {!isLastLevel ? (
+                             <button 
+                                onClick={handleNextLevel}
+                                className="px-6 py-3 bg-white text-black hover:bg-gray-200 font-bold rounded shadow-lg flex items-center gap-2 transition-colors animate-pulse"
+                            >
+                                <ArrowRight className="w-5 h-5" />
+                                NEXT LEVEL
+                            </button>
+                         ) : (
+                             <button 
+                                onClick={startGame}
+                                className="px-6 py-3 bg-white text-black hover:bg-gray-200 font-bold rounded shadow-lg flex items-center gap-2 transition-colors"
+                            >
+                                <RefreshCw className="w-5 h-5" />
+                                REPLAY ALL
+                            </button>
+                         )}
+                        
                         <button 
                             onClick={() => setGameState(GameState.MENU)}
                             className="px-6 py-3 bg-neutral-800 hover:bg-neutral-700 text-white font-bold rounded border border-neutral-600 transition-colors"
                         >
-                            NEW LEVEL
-                        </button>
-                        <button 
-                            onClick={startGame}
-                            className="px-6 py-3 bg-white text-black hover:bg-gray-200 font-bold rounded shadow-lg flex items-center gap-2 transition-colors"
-                        >
-                            <RefreshCw className="w-5 h-5" />
-                            REPLAY
+                            MENU
                         </button>
                     </div>
                 </div>
@@ -214,7 +243,7 @@ const App: React.FC = () => {
 
       {/* Footer / Controls Hint */}
       <div className="absolute bottom-4 text-neutral-500 text-xs">
-         React + Canvas + Gemini API • Voxel Corgi Engine v1.1
+         React + Canvas + Gemini API • Voxel Corgi Engine v1.2
       </div>
     </div>
   );
