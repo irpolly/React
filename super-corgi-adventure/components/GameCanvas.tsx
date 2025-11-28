@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameState, LevelData, Platform, Enemy, Collectible, Particle, SpriteFrame, Projectile } from '../types';
-import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_BITE, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE, SPRITE_SQUIRREL, SPRITE_SQUIRREL_IDLE_1, SPRITE_SQUIRREL_IDLE_2, SPRITE_SQUIRREL_SHOOT, SPRITE_NUT, SPRITE_RAT, SPRITE_BAT } from '../constants';
+import { PHYSICS, TILE_SIZE, WORLD_HEIGHT, PALETTE, CAT_VARIANTS, SPRITE_CORGI_IDLE, SPRITE_CORGI_RUN_1, SPRITE_CORGI_JUMP, SPRITE_CORGI_LEAP_UP, SPRITE_CORGI_LEAP_DOWN, SPRITE_CAT, SPRITE_CAT_WALK, SPRITE_BONE, SPRITE_DOGHOUSE, SPRITE_CORGI_ATK_1, SPRITE_CORGI_ATK_2, SPRITE_HEART, SPRITE_TENNIS_BALL, SPRITE_SPIKE, SPRITE_SQUIRREL, SPRITE_SQUIRREL_IDLE_1, SPRITE_SQUIRREL_IDLE_2, SPRITE_SQUIRREL_SHOOT, SPRITE_NUT, SPRITE_RAT, SPRITE_BAT, SPRITE_BEAR_WALK_1, SPRITE_BEAR_WALK_2, SPRITE_BEAR_ATTACK } from '../constants';
 
 interface GameCanvasProps {
   gameState: GameState;
@@ -14,7 +14,6 @@ interface GameCanvasProps {
 }
 
 const hexToRgba = (hex: string, alpha: number) => {
-    // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
     const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
     hex = hex.replace(shorthandRegex, (m, r, g, b) => {
         return r + r + g + g + b + b;
@@ -36,13 +35,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cameraX = useRef(0);
 
-  // Game Objects Refs (Mutable state for game loop performance)
+  // Game Objects Refs
   const player = useRef({
     x: 100,
     y: 400,
     vx: 0,
     vy: 0,
-    width: 55, // Updated for new longer sprite (22 * 2.5)
+    width: 55, 
     height: 35, 
     grounded: false,
     facingRight: true,
@@ -50,7 +49,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     invulnerableUntil: 0,
     isAttacking: false,
     attackCooldown: 0,
-    attackTimer: 0
+    attackTimer: 0,
+    checkpointX: 100,
+    checkpointY: 400
   });
 
   const keys = useRef<{ [key: string]: boolean }>({});
@@ -64,7 +65,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   const animationFrameId = useRef<number>(0);
   const goalRef = useRef({ x: 0, y: 0, width: 48, height: 48 });
   
-  // Visual Depth Refs
   const bgLayers = useRef<{x: number, y: number, width: number, height: number, color: string, parallax: number}[]>([]);
   const fgLayers = useRef<{x: number, y: number, width: number, height: number, color: string, parallax: number}[]>([]);
 
@@ -85,39 +85,47 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             invulnerableUntil: 0,
             isAttacking: false,
             attackCooldown: 0,
-            attackTimer: 0
+            attackTimer: 0,
+            checkpointX: 100,
+            checkpointY: 400
         };
 
-        // Map Level Data to Game Objects
         platforms.current = levelData.platforms.map(p => ({ 
             ...p, 
             height: TILE_SIZE 
         }));
 
-        // Prepare enemies with robust ground snapping
         enemies.current = levelData.enemies.map((e, i) => {
             let width = 48;
             let height = 42;
             let vx = 2;
+            let hp = 1;
+            let maxHp = 1;
 
             if (e.type === 'squirrel') {
                 width = SPRITE_SQUIRREL.width * 2.0;
                 height = SPRITE_SQUIRREL.height * 2.0;
                 vx = 0;
             } else if (e.type === 'rat') {
-                width = SPRITE_RAT.width * 3.0; // 48px
-                height = SPRITE_RAT.height * 3.0; // 30px
-                vx = 4; // Rats are faster
+                width = SPRITE_RAT.width * 3.0; 
+                height = SPRITE_RAT.height * 3.0; 
+                vx = 4; 
             } else if (e.type === 'bat') {
-                width = SPRITE_BAT.width * 3.0; // 48px
-                height = SPRITE_BAT.height * 3.0; // 30px
-                vx = 3; // Bats fly
+                width = SPRITE_BAT.width * 3.0; 
+                height = SPRITE_BAT.height * 3.0; 
+                vx = 3; 
+            } else if (e.type === 'bear') {
+                width = SPRITE_BEAR_WALK_1.width * 3.0; // 96px
+                height = SPRITE_BEAR_WALK_1.height * 3.0; // 96px
+                vx = 1; // Slow start
+                hp = 25; // Boss Health (Buffed)
+                maxHp = 25;
             }
             
             const centerX = e.x + width / 2;
             let finalY = e.y - height;
 
-            // Only snap walking enemies to ground
+            // Snap ground enemies
             if (e.type !== 'bat') {
                 const groundPlat = platforms.current
                     .filter(p => centerX >= p.x && centerX <= p.x + p.width && p.y >= e.y - 100) 
@@ -137,7 +145,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 patrolStart: e.x - 100,
                 patrolEnd: e.x + 100,
                 variant: Math.floor(Math.random() * 4),
-                attackCooldown: Math.random() * 200 // Random start delay
+                attackCooldown: Math.random() * 200,
+                hp,
+                maxHp,
+                hitTimer: 0
             };
         });
 
@@ -174,7 +185,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             height: 48
         }));
 
-        // Removed auto-spikes logic as requested
         obstacles.current = [...providedObstacles];
 
         if (levelData.goal) {
@@ -190,44 +200,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              goalRef.current = { x: 0, y: 0, width: 0, height: 0 };
         }
         
-        // Generate Background Layers
         const bgObjs = [];
         const fgObjs = [];
         const worldEnd = levelData.goal ? levelData.goal.x + 1000 : 5000;
         
-        // Far Background (Parallax 0.2) - Lighter, faded mountains
         for (let i = -200; i < worldEnd; i += Math.random() * 300 + 200) {
             bgObjs.push({
                 x: i,
                 y: WORLD_HEIGHT - (Math.random() * 300 + 100),
                 width: Math.random() * 400 + 200,
                 height: 600,
-                color: hexToRgba(levelData.groundColor, 0.3), // Faded
+                color: hexToRgba(levelData.groundColor, 0.3), 
                 parallax: 0.2
             });
         }
 
-        // Mid Background (Parallax 0.5) - Slightly darker hills
         for (let i = -100; i < worldEnd; i += Math.random() * 200 + 150) {
             bgObjs.push({
                 x: i,
                 y: WORLD_HEIGHT - (Math.random() * 200 + 50),
                 width: Math.random() * 300 + 100,
                 height: 600,
-                color: hexToRgba(levelData.groundColor, 0.5), // More visible
+                color: hexToRgba(levelData.groundColor, 0.5), 
                 parallax: 0.5
             });
         }
         bgLayers.current = bgObjs;
 
-        // Foreground (Parallax 1.2) - Fast moving bushes/rocks
         for (let i = 0; i < worldEnd; i += Math.random() * 800 + 400) {
             fgObjs.push({
                 x: i,
-                y: WORLD_HEIGHT - (Math.random() * 30 + 20),
+                y: WORLD_HEIGHT - (Math.random() * 3 + 20),
                 width: Math.random() * 60 + 40,
                 height: 60,
-                color: hexToRgba('#1a1a1a', 0.3), // Dark silhouette
+                color: hexToRgba('#1a1a1a', 0.3),
                 parallax: 1.2
             });
         }
@@ -239,7 +245,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   }, [levelData, gameState]);
 
 
-  // Input Handling
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { 
       if (e.code === 'Space' || e.code === 'ArrowUp') e.preventDefault();
@@ -257,7 +262,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   }, []);
 
 
-  // --- RENDER HELPERS (Voxel Style) ---
   const drawVoxelSprite = useCallback((
     ctx: CanvasRenderingContext2D,
     sprite: SpriteFrame,
@@ -265,12 +269,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     y: number,
     scale: number,
     facingRight: boolean,
-    paletteOverride?: Record<number, string>
+    paletteOverride?: Record<number, string>,
+    hitFlash?: boolean
   ) => {
     ctx.save();
     const pixelSize = scale;
-    
-    // Calculate center for flipping
     const width = sprite.width * pixelSize;
     
     if (!facingRight) {
@@ -281,25 +284,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     sprite.pixels.forEach((row, rI) => {
         row.forEach((colIndex, cI) => {
-            if (colIndex === 0) return; // Transparent
+            if (colIndex === 0) return;
             
             const px = x + cI * pixelSize;
             const py = y + rI * pixelSize;
             
-            // Use override color if available, otherwise default palette
-            const color = paletteOverride?.[colIndex] || PALETTE[colIndex];
+            let color = paletteOverride?.[colIndex] || PALETTE[colIndex];
+            if (hitFlash) color = '#FFFFFF'; // Flash white when hit
 
-            // Main Face
             ctx.fillStyle = color;
             ctx.fillRect(px, py, pixelSize, pixelSize);
 
-            // Voxel Depth Effect (Right and Bottom shadow)
-            // Side Face (Right)
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            ctx.fillRect(px + pixelSize - 2, py, 2, pixelSize);
-            // Bottom Face
-            ctx.fillStyle = 'rgba(0,0,0,0.3)';
-            ctx.fillRect(px, py + pixelSize - 2, pixelSize, 2);
+            if (!hitFlash) {
+                ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                ctx.fillRect(px + pixelSize - 2, py, 2, pixelSize);
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(px, py + pixelSize - 2, pixelSize, 2);
+            }
         });
     });
     ctx.restore();
@@ -339,11 +340,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   };
 
   const respawnPlayer = () => {
-      player.current.x = 100;
-      player.current.y = 400;
-      player.current.vx = 0;
-      player.current.vy = 0;
-      cameraX.current = 0;
+      const p = player.current;
+      p.x = p.checkpointX;
+      p.y = p.checkpointY;
+      p.vx = 0;
+      p.vy = 0;
+      cameraX.current = Math.max(0, p.x - 300);
       setLives(prev => prev - 1);
   };
 
@@ -359,7 +361,27 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       }
   };
 
-  // --- GAME LOOP ---
+  // --- DAMAGE ENEMY HELPER ---
+  const damageEnemy = (enemy: Enemy) => {
+      if (enemy.hp !== undefined && enemy.hp > 1) {
+          enemy.hp--;
+          enemy.hitTimer = 10; // Flash for 10 frames
+          createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, '#FFF');
+          setScore(prev => prev + 50);
+          
+          // Knockback player if hitting a boss
+          if (enemy.type === 'bear') {
+              const p = player.current;
+              p.vx = p.x < enemy.x + enemy.width/2 ? -10 : 10;
+              p.vy = -6; // Default recoil, overridden by stomp logic if stomping
+          }
+      } else {
+          createExplosion(enemy.x + enemy.width/2, enemy.y + enemy.height/2, '#9CA3AF');
+          enemies.current = enemies.current.filter(e => e.id !== enemy.id);
+          setScore(prev => prev + (enemy.type === 'bear' ? 1000 : 150));
+      }
+  };
+
   const update = useCallback(() => {
     const now = Date.now();
 
@@ -455,6 +477,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                 p.y = plat.y - p.height;
                 p.vy = 0;
                 p.grounded = true;
+
+                // Checkpoint Logic
+                if (plat.type !== 'lava') {
+                    p.checkpointX = p.x;
+                    p.checkpointY = p.y;
+                }
+
             } else if (p.vy < 0) {
                 p.y = plat.y + plat.height;
                 p.vy = 0;
@@ -464,26 +493,23 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     // --- ENEMY LOGIC ---
     enemies.current.forEach(enemy => {
-        // Squirrel Logic (Stationary Turret)
+        if (enemy.hitTimer && enemy.hitTimer > 0) enemy.hitTimer--;
+
+        // Squirrel Logic
         if (enemy.type === 'squirrel') {
              const dx = p.x - enemy.x;
-             const dy = (p.y + p.height / 2) - (enemy.y + 20); // Aim at player center relative to shoot height
+             const dy = (p.y + p.height / 2) - (enemy.y + 20); 
              const dist = Math.sqrt(dx * dx + dy * dy);
              
-             if (enemy.attackCooldown > 0) {
+             if (enemy.attackCooldown !== undefined && enemy.attackCooldown > 0) {
                  enemy.attackCooldown--;
              } else {
-                 // Fire logic
-                 if (dist < 700) { // Range check
-                     // Ballistic Estimation
-                     const projSpeed = 9; // Horizontal-ish speed base
-                     const gravity = 0.2; // Gravity per frame (approximate from projectile logic below)
+                 if (dist < 700) { 
+                     const projSpeed = 9; 
+                     const gravity = 0.2; 
                      const timeToTarget = Math.abs(dx) / projSpeed; 
                      
-                     // dy = vy * t + 0.5 * g * t^2  =>  vy = (dy - 0.5 * g * t^2) / t
                      let vy = (dy - 0.5 * gravity * timeToTarget * timeToTarget) / timeToTarget;
-                     
-                     // Clamps to ensure reasonable firing arcs
                      if (vy < -12) vy = -12; 
                      if (vy > 2) vy = 2; 
 
@@ -499,25 +525,97 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                          height: 30,
                          type: 'nut'
                      });
-                     // Reset Cooldown 
                      enemy.attackCooldown = 90 + Math.random() * 60;
                  }
              }
         }
 
-        // Bat Logic (Flying)
+        // Bat Logic
         if (enemy.type === 'bat') {
-             // Simple patrol with Sine Wave Bobbing
              enemy.x += enemy.vx;
-             enemy.y += Math.sin(Date.now() / 200) * 2; // Bob effect
-
-             // Turn around at patrol limits
+             enemy.y += Math.sin(Date.now() / 200) * 2; 
              if (enemy.x > enemy.patrolEnd || enemy.x < enemy.patrolStart) {
                  enemy.vx *= -1;
              }
         }
 
-        // Cat/Rat Logic (Ground Movement)
+        // Bear Logic (Boss)
+        if (enemy.type === 'bear') {
+            const dx = p.x - enemy.x;
+            const dist = Math.abs(dx);
+            
+            // Aggro Speed calculation
+            let speed = 1.0;
+            if (dist < 300) speed = 4.5; // Charge!
+            if (dist < 60) speed = 0;    // Stop to attack
+
+            // Direction logic: face player
+            const desiredDir = Math.sign(dx);
+
+            // Calculate potential movement
+            let nextX = enemy.x + desiredDir * speed;
+            let moving = true;
+            
+            // Wall Check
+            const hitWall = platforms.current.some(plat => 
+                nextX < plat.x + plat.width &&
+                nextX + enemy.width > plat.x &&
+                enemy.y + 10 < plat.y + plat.height && 
+                enemy.y + enemy.height - 10 > plat.y
+            );
+
+            if (hitWall) {
+                moving = false; // Stop at wall
+            } else {
+                // Ledge/Ground Check
+                const centerX = nextX + enemy.width / 2;
+                const hasGround = platforms.current.some(plat => 
+                    centerX >= plat.x && 
+                    centerX <= plat.x + plat.width &&
+                    enemy.y + enemy.height >= plat.y - 5 && 
+                    enemy.y + enemy.height <= plat.y + 25 // Tolerance
+                );
+                
+                if (!hasGround) {
+                    // Check if just falling (gap) vs walking off edge
+                    // For Boss, we generally don't want to walk off edges unless following player down
+                    // Simple check: stop at edge
+                    moving = false;
+                }
+            }
+
+            if (moving) {
+                enemy.x = nextX;
+                enemy.vx = desiredDir * speed; // Store for animation/sprite flip
+            } else {
+                // Don't move X, but keep facing player direction for sprite
+                enemy.vx = (dx > 0 ? 0.01 : -0.01); 
+            }
+
+            // Gravity/Y-Axis Logic
+            let grounded = false;
+            for (const plat of platforms.current) {
+                const cx = enemy.x + enemy.width/2;
+                 if (
+                    cx >= plat.x && 
+                    cx <= plat.x + plat.width &&
+                    enemy.y + enemy.height >= plat.y - 5 && 
+                    enemy.y + enemy.height <= plat.y + 25
+                 ) {
+                    if (enemy.y + enemy.height > plat.y) {
+                        enemy.y = plat.y - enemy.height; // Snap up
+                    }
+                    grounded = true;
+                    break;
+                 }
+            }
+
+            if (!grounded) {
+                enemy.y += 5; // Gravity
+            }
+        }
+
+        // Cat/Rat Logic
         if (enemy.type === 'cat' || enemy.type === 'rat') {
             let nextX = enemy.x + enemy.vx;
             let shouldTurn = false;
@@ -555,7 +653,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Collision with Player
         let attackHit = false;
         if (p.isAttacking) {
-            const range = 30;
+            const range = 40; // Increased range slightly
             const attackX = p.facingRight ? p.x + p.width : p.x - range;
             const attackRect = { x: attackX, y: p.y, width: range, height: p.height };
             
@@ -570,33 +668,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
 
         if (attackHit) {
-             createExplosion(enemy.x, enemy.y, '#9CA3AF');
-             enemies.current = enemies.current.filter(e => e.id !== enemy.id);
-             setScore(prev => prev + 150);
+             damageEnemy(enemy);
         } else if (
             p.x < enemy.x + enemy.width &&
             p.x + p.width > enemy.x &&
             p.y < enemy.y + enemy.height &&
             p.y + p.height > enemy.y
         ) {
-            if (p.vy > 0 && p.y + p.height - p.vy < enemy.y + enemy.height * 0.6) {
-                createExplosion(enemy.x, enemy.y, '#9CA3AF');
-                enemies.current = enemies.current.filter(e => e.id !== enemy.id);
-                p.vy = -8; 
-                setScore(prev => prev + 100);
+            // STOMP CHECK
+            // For bear, be more generous (0.8) so if player is anywhere above the 'ankles' it counts as a stomp if falling
+            const stompThreshold = enemy.type === 'bear' ? 0.85 : 0.6;
+
+            if (p.vy > 0 && p.y + p.height - p.vy < enemy.y + enemy.height * stompThreshold) {
+                damageEnemy(enemy);
+                p.vy = -12; // Override recoil with a high jump/bounce
             } else {
                 takeDamage(enemy.x);
             }
         }
     });
 
-    // --- PROJECTILE LOGIC ---
     projectiles.current.forEach((proj, idx) => {
         proj.x += proj.vx;
         proj.y += proj.vy;
-        proj.vy += 0.2; // Slightly stronger gravity
+        proj.vy += 0.2; 
 
-        // Collision with player
         if (
             p.x < proj.x + proj.width &&
             p.x + p.width > proj.x &&
@@ -609,7 +705,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
              return;
         }
 
-        // Collision with platforms (destroy nut)
         const hitGround = platforms.current.some(plat => 
             proj.x < plat.x + plat.width &&
             proj.x + proj.width > plat.x &&
@@ -662,13 +757,21 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     });
 
     const g = goalRef.current;
+    // Check if Boss is Active
+    const bossAlive = enemies.current.some(e => e.type === 'bear');
+    
     if (
         p.x < g.x + g.width &&
         p.x + p.width > g.x &&
         p.y < g.y + g.height &&
         p.y + p.height > g.y
     ) {
-        setGameState(GameState.LEVEL_COMPLETE);
+        if (bossAlive) {
+            // Locked!
+            if (p.vx > 0) p.x -= 5;
+        } else {
+            setGameState(GameState.LEVEL_COMPLETE);
+        }
     }
 
     particles.current.forEach(pt => {
@@ -698,26 +801,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const render = () => {
         if (gameState === GameState.PLAYING || gameState === GameState.LEVEL_COMPLETE) update();
 
-        // 1. Sky Gradient
         const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
         gradient.addColorStop(0, levelData.backgroundColor);
         gradient.addColorStop(1, levelData.themeName.includes("Under") ? '#000000' : '#e0f7fa'); 
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // 2. Background Layers (Parallax)
         const camX = Math.max(0, cameraX.current);
         
-        // Far Layer
         bgLayers.current.forEach(bg => {
-            // Simple Parallax Calc
             const x = bg.x - (camX * bg.parallax);
-            // Optim: Only draw if on screen
             if (x + bg.width > 0 && x < canvas.width) {
                 ctx.fillStyle = bg.color;
-                // Draw stepped mountain/hill
                 ctx.fillRect(x, bg.y, bg.width, bg.height);
-                // Add a highlight edge
                 ctx.fillStyle = 'rgba(255,255,255,0.1)';
                 ctx.fillRect(x, bg.y, 10, bg.height);
             }
@@ -726,36 +822,29 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.save();
         ctx.translate(-camX, 0);
 
-        // 3. Platforms (Main Layer)
         levelData.platforms.forEach(plat => {
-            // Draw Deep Earth with Gradient for Depth
             const earthGrad = ctx.createLinearGradient(0, plat.y, 0, plat.y + 200);
             earthGrad.addColorStop(0, levelData.groundColor);
-            earthGrad.addColorStop(1, 'rgba(0,0,0,0.8)'); // Fade to dark
+            earthGrad.addColorStop(1, 'rgba(0,0,0,0.8)'); 
             ctx.fillStyle = earthGrad;
             ctx.fillRect(plat.x, plat.y, plat.width, 200); 
             
-            // Side/Shadow on right edge for blockiness
             ctx.fillStyle = 'rgba(0,0,0,0.3)';
             ctx.fillRect(plat.x + plat.width - 8, plat.y, 8, 200);
 
-            // Draw Top Layer
             ctx.fillStyle = plat.type === 'grass' ? '#4CAF50' : 
                             plat.type === 'stone' ? '#757575' : 
                             plat.type === 'lava' ? '#FF5722' : '#FFFFFF';
             ctx.fillRect(plat.x, plat.y, plat.width, 8);
             
-            // Top Highlight
             ctx.fillStyle = 'rgba(255,255,255,0.2)';
             ctx.fillRect(plat.x, plat.y, plat.width, 2);
         });
         
-        // Draw Obstacles
         obstacles.current.forEach(o => {
             drawVoxelSprite(ctx, SPRITE_SPIKE, o.x, o.y, 3.0, true);
         });
 
-        // Draw Collectibles
         collectibles.current.forEach(c => {
             if (c.collected) return;
             const bob = Math.sin(Date.now() / 200) * 5;
@@ -770,6 +859,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         const g = goalRef.current;
         drawVoxelSprite(ctx, SPRITE_DOGHOUSE, g.x, g.y, 3.0, true);
+        
+        // DRAW BOSS LOCK
+        const bossAlive = enemies.current.some(e => e.type === 'bear');
+        if (bossAlive) {
+            const lockX = g.x + g.width / 2 - 12;
+            const lockY = g.y + g.height / 2;
+            
+            // Draw Padlock Icon (Simple rects)
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(lockX, lockY, 24, 20); // Body
+            ctx.strokeStyle = '#FF0000';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(lockX + 12, lockY, 8, Math.PI, 0);
+            ctx.stroke();
+            
+            // Draw Keyhole
+            ctx.fillStyle = '#300';
+            ctx.fillRect(lockX + 10, lockY + 8, 4, 8);
+
+            // Floating Text
+            ctx.font = '16px "Press Start 2P"';
+            ctx.fillStyle = '#FFF';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 4;
+            ctx.strokeText("DEFEAT BOSS", g.x - 30, g.y - 20);
+            ctx.fillText("DEFEAT BOSS", g.x - 30, g.y - 20);
+        }
 
         const p = player.current;
 
@@ -778,39 +895,40 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
               const isWalkingFrame = Math.floor(Date.now() / 150) % 2 === 0;
               const sprite = (Math.abs(e.vx) > 0 && isWalkingFrame) ? SPRITE_CAT_WALK : SPRITE_CAT;
               const variantPalette = CAT_VARIANTS[e.variant];
-              drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette);
+              drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, e.vx > 0, variantPalette, e.hitTimer > 0);
             } else if (e.type === 'rat') {
-                const isWalkingFrame = Math.floor(Date.now() / 100) % 2 === 0; // Fast
-                drawVoxelSprite(ctx, SPRITE_RAT, e.x, e.y + (isWalkingFrame ? -2 : 0), 3.0, e.vx > 0);
+                const isWalkingFrame = Math.floor(Date.now() / 100) % 2 === 0; 
+                drawVoxelSprite(ctx, SPRITE_RAT, e.x, e.y + (isWalkingFrame ? -2 : 0), 3.0, e.vx > 0, undefined, e.hitTimer > 0);
             } else if (e.type === 'bat') {
                 const isFlap = Math.floor(Date.now() / 100) % 2 === 0;
-                drawVoxelSprite(ctx, SPRITE_BAT, e.x, e.y + (isFlap ? -4 : 0), 3.0, e.vx > 0);
+                drawVoxelSprite(ctx, SPRITE_BAT, e.x, e.y + (isFlap ? -4 : 0), 3.0, e.vx > 0, undefined, e.hitTimer > 0);
             } else if (e.type === 'squirrel') {
                 const facingPlayer = p.x > e.x;
-                
-                // Animation Logic for Squirrel
                 let sprite = SPRITE_SQUIRREL_IDLE_1;
-                
-                if (e.attackCooldown) {
-                    if (e.attackCooldown < 20) {
-                        // Prep to shoot (could add a PREP frame, but for now just ensure it's not Shoot yet)
-                         sprite = SPRITE_SQUIRREL_IDLE_2;
-                    } else if (e.attackCooldown > (90 + 40)) { // Just shot (approx logic based on reset)
-                        // Just shot
-                        sprite = SPRITE_SQUIRREL_SHOOT;
-                    } else {
-                        // Idle Animation
-                        const isFrame2 = Math.floor(Date.now() / 300) % 2 === 0;
-                        sprite = isFrame2 ? SPRITE_SQUIRREL_IDLE_2 : SPRITE_SQUIRREL_IDLE_1;
-                    }
+                if (e.attackCooldown && e.attackCooldown > (90 + 40)) { 
+                    sprite = SPRITE_SQUIRREL_SHOOT;
+                } else {
+                    const isFrame2 = Math.floor(Date.now() / 300) % 2 === 0;
+                    sprite = isFrame2 ? SPRITE_SQUIRREL_IDLE_2 : SPRITE_SQUIRREL_IDLE_1;
                 }
+                drawVoxelSprite(ctx, sprite, e.x, e.y, 2.0, facingPlayer, undefined, e.hitTimer > 0);
+            } else if (e.type === 'bear') {
+                const dx = p.x - e.x;
+                const facingPlayer = dx > 0;
+                const dist = Math.abs(dx);
+                let sprite = SPRITE_BEAR_WALK_1;
                 
-                // Use 2.0 scale for the larger 32px sprite
-                drawVoxelSprite(ctx, sprite, e.x, e.y, 2.0, facingPlayer);
+                if (dist < 60) {
+                     sprite = SPRITE_BEAR_ATTACK;
+                } else {
+                     const isFrame2 = Math.floor(Date.now() / 200) % 2 === 0;
+                     sprite = isFrame2 ? SPRITE_BEAR_WALK_2 : SPRITE_BEAR_WALK_1;
+                }
+                // Scale 3.0 for boss size
+                drawVoxelSprite(ctx, sprite, e.x, e.y, 3.0, facingPlayer, undefined, e.hitTimer > 0);
             }
         });
 
-        // Draw Projectiles
         projectiles.current.forEach(proj => {
             drawVoxelSprite(ctx, SPRITE_NUT, proj.x, proj.y, 3.0, true);
         });
@@ -825,8 +943,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         if (gameState === GameState.PLAYING || gameState === GameState.LEVEL_COMPLETE || gameState === GameState.GAME_OVER) {
              if (drawPlayer) {
                 let sprite = SPRITE_CORGI_IDLE;
+                let xOffset = 0;
+
                 if (p.isAttacking) {
-                    sprite = SPRITE_CORGI_BITE;
+                    // BITE ANIMATION
+                    if (p.attackTimer > 7) {
+                        sprite = SPRITE_CORGI_ATK_1; // Mouth Open
+                        xOffset = p.facingRight ? 4 : -4; // Lunge forward visual
+                    } else {
+                        sprite = SPRITE_CORGI_ATK_2; // Chomp
+                    }
                 } else if (!p.grounded) {
                     if (p.vy < -1) sprite = SPRITE_CORGI_LEAP_UP;
                     else if (p.vy > 1) sprite = SPRITE_CORGI_LEAP_DOWN;
@@ -835,7 +961,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
                     sprite = SPRITE_CORGI_RUN_1;
                 }
                 
-                drawVoxelSprite(ctx, sprite, p.x, p.y, 2.5, p.facingRight);
+                drawVoxelSprite(ctx, sprite, p.x + xOffset, p.y, 2.5, p.facingRight);
             }
         }
 
@@ -848,19 +974,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         ctx.restore();
 
-        // 4. Foreground (Parallax 1.2) - Drawn on top of everything
         fgLayers.current.forEach(fg => {
              const x = fg.x - (camX * fg.parallax);
              if (x + fg.width > 0 && x < canvas.width) {
                  ctx.fillStyle = fg.color;
-                 // Simple bush shape
                  ctx.beginPath();
                  ctx.arc(x + fg.width/2, fg.y + fg.height/2, fg.width/2, 0, Math.PI * 2);
                  ctx.fill();
              }
         });
         
-        // HUD
+        // UI: BOSS BAR
+        const activeBoss = enemies.current.find(e => e.type === 'bear' && Math.abs(e.x - p.x) < 800);
+        if (gameState === GameState.PLAYING && activeBoss && activeBoss.hp !== undefined && activeBoss.maxHp !== undefined) {
+            const barW = 400;
+            const barH = 20;
+            const barX = (canvas.width - barW) / 2;
+            const barY = canvas.height - 50;
+            const pct = activeBoss.hp / activeBoss.maxHp;
+            
+            ctx.fillStyle = '#000';
+            ctx.fillRect(barX - 4, barY - 4, barW + 8, barH + 8);
+            ctx.fillStyle = '#500';
+            ctx.fillRect(barX, barY, barW, barH);
+            ctx.fillStyle = '#F00';
+            ctx.fillRect(barX, barY, barW * pct, barH);
+            
+            ctx.fillStyle = '#FFF';
+            ctx.font = '16px "Press Start 2P"';
+            ctx.fillText("ANGRY BEAR", barX, barY - 10);
+        }
+
         if (gameState === GameState.PLAYING) {
             for (let i = 0; i < lives; i++) {
                 drawVoxelSprite(ctx, SPRITE_TENNIS_BALL, 760 - (i * 32), 20, 3.0, true);

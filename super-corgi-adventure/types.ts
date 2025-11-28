@@ -22,11 +22,14 @@ export interface Enemy {
   width: number;
   height: number;
   vx: number;
-  type: 'cat' | 'bat' | 'squirrel' | 'rat';
+  type: 'cat' | 'bat' | 'squirrel' | 'rat' | 'bear';
   patrolStart: number;
   patrolEnd: number;
   variant: number; // 0: Grey, 1: White, 2: Tuxedo, 3: Brown
   attackCooldown?: number; // For shooting enemies
+  hp?: number;
+  maxHp?: number;
+  hitTimer?: number; // For flashing red when damaged
 }
 
 export interface Projectile {
@@ -66,7 +69,7 @@ export interface LevelData {
   backgroundColor: string;
   groundColor: string;
   platforms: Omit<Platform, 'height'>[]; // Height is standardized
-  enemies: { x: number; y: number; type: 'cat' | 'bat' | 'squirrel' | 'rat' }[];
+  enemies: { x: number; y: number; type: 'cat' | 'bat' | 'squirrel' | 'rat' | 'bear' }[];
   obstacles: { x: number; y: number; type: 'spike' }[];
   collectibles: { x: number; y: number }[];
   tennisBalls: { x: number; y: number }[];

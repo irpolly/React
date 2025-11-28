@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameCanvas } from './components/GameCanvas';
 import { GameState, LevelData } from './types';
 import { DEFAULT_LEVEL, LEVEL_2 } from './constants';
@@ -15,12 +15,35 @@ const App: React.FC = () => {
   const [currentLevelIndex, setCurrentLevelIndex] = useState(0);
   const [levelData, setLevelData] = useState<LevelData>(DEFAULT_LEVEL);
   
+  // Highscore State
+  const [highscore, setHighscore] = useState(() => {
+    try {
+        const saved = localStorage.getItem('superCorgiHighscore');
+        return saved ? parseInt(saved, 10) : 0;
+    } catch (e) {
+        console.error("Failed to load highscore:", e);
+        return 0;
+    }
+  });
+  
   // Generation Params State
   const [prompt, setPrompt] = useState("A spooky graveyard with floating islands");
   const [difficulty, setDifficulty] = useState<GenerationParams['difficulty']>('Medium');
   const [length, setLength] = useState<GenerationParams['length']>('Medium');
   const [density, setDensity] = useState<GenerationParams['enemyDensity']>('Medium');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Update Highscore
+  useEffect(() => {
+      if (score > highscore) {
+          setHighscore(score);
+          try {
+              localStorage.setItem('superCorgiHighscore', score.toString());
+          } catch (e) {
+              console.error("Failed to save highscore:", e);
+          }
+      }
+  }, [score, highscore]);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
@@ -79,7 +102,8 @@ const App: React.FC = () => {
         {/* UI Overlay: HUD */}
         {gameState === GameState.PLAYING && (
             <div className="absolute top-4 left-4 flex gap-4 font-pixel text-xl text-white drop-shadow-md pointer-events-none">
-                <div className="bg-black/50 px-3 py-1 rounded">SCORE: {score}</div>
+                <div className="bg-black/50 px-3 py-1 rounded border border-white/20">SCORE: {score}</div>
+                <div className="bg-black/50 px-3 py-1 rounded border border-white/20 text-yellow-400">HI: {highscore}</div>
             </div>
         )}
 
@@ -89,6 +113,11 @@ const App: React.FC = () => {
                 <h1 className="font-pixel text-4xl md:text-5xl text-yellow-400 mb-2 text-center leading-tight">
                     SUPER CORGI<br/><span className="text-white text-2xl">ADVENTURE</span>
                 </h1>
+                
+                <div className="font-pixel text-yellow-400 mb-4 text-lg animate-pulse">
+                    HIGHSCORE: {highscore}
+                </div>
+
                 <p className="text-neutral-400 mb-6 font-sans text-center max-w-md">
                     Use Arrow Keys to Move. Space to Jump. Z to Bite.<br/>Find the Doghouse!
                 </p>
@@ -181,7 +210,14 @@ const App: React.FC = () => {
             <div className="absolute inset-0 bg-red-900/90 backdrop-blur-md flex flex-col items-center justify-center z-20 text-center">
                 <Skull className="w-24 h-24 text-red-300 mb-4 animate-bounce" />
                 <h2 className="font-pixel text-4xl text-white mb-2">GAME OVER</h2>
-                <p className="font-pixel text-xl text-yellow-300 mb-8">FINAL SCORE: {score}</p>
+                
+                {score >= highscore && score > 0 ? (
+                    <div className="text-yellow-300 font-pixel text-lg mb-2 animate-pulse">NEW HIGHSCORE!</div>
+                ) : (
+                    <div className="text-neutral-300 font-pixel text-sm mb-2">Highscore: {highscore}</div>
+                )}
+                
+                <p className="font-pixel text-xl text-white mb-8">FINAL SCORE: {score}</p>
                 
                 <div className="flex gap-4">
                     <button 
@@ -208,6 +244,11 @@ const App: React.FC = () => {
                     <Award className="w-24 h-24 text-yellow-300 mb-4 animate-bounce" />
                     <h2 className="font-pixel text-4xl text-white mb-2">LEVEL COMPLETE!</h2>
                     <p className="text-green-200 mb-4">You reached the doggy castle!</p>
+                    
+                    {score >= highscore && score > 0 ? (
+                         <div className="text-yellow-300 font-pixel text-sm mb-2 animate-pulse">NEW HIGHSCORE!</div>
+                    ) : null}
+
                     <p className="font-pixel text-2xl text-white mb-8">SCORE: {score}</p>
                     
                     <div className="flex gap-4">

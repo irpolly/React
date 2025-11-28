@@ -44,7 +44,7 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
       3. Goal: Place a 'goal' near x=${worldWidth - 200}. It MUST be on a ground platform (approx y=550).
       4. Platforms: Max jump height is ~150px.
       5. Tennis Ball: Place exactly ONE 'tennisBall' (extra life) in a hard-to-reach spot (high platform or hidden area).
-      6. Enemies: You can place 'cat' (walking), 'rat' (walking fast), 'bat' (flying), or 'squirrel' (stationary catapult).
+      6. Enemies: You can place 'cat' (walking), 'rat' (walking fast), 'bat' (flying), 'squirrel' (stationary catapult), or 'bear' (boss, strong).
       7. Return valid JSON.
     `;
 
@@ -79,7 +79,7 @@ export const generateLevel = async (params: GenerationParams): Promise<LevelData
                 properties: {
                   x: { type: Type.NUMBER },
                   y: { type: Type.NUMBER },
-                  type: { type: Type.STRING, enum: ["cat", "bat", "squirrel", "rat"] }
+                  type: { type: Type.STRING, enum: ["cat", "bat", "squirrel", "rat", "bear"] }
                 },
                 required: ["x", "y", "type"]
               }
